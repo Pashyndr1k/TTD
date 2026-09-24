@@ -66,7 +66,7 @@ test('рейтинг станции стартует с 175 и меняется 
 
 /** Two towns 30 tiles apart on row 20 of a flat map. */
 function twoTowns(w) {
-    const a = Towns.found(w, idx(w, 12, 20), 12), b = Towns.found(w, idx(w, 44, 20), 12);
+    const a = Towns.found(w, idx(w, 12, 20), 18), b = Towns.found(w, idx(w, 44, 20), 18);
     assert.ok(a && b, 'towns founded');
     return [a, b];
 }
@@ -79,8 +79,8 @@ test('автобусы между двумя городами возят пас�
         if (w.map.type[t] === GameMap.T_ROAD && (w.map.road[t] & 5) === 5) continue;
         must(Commands.run(w, ex => Commands.buildRoad(w, t, 5, ex), true));
     }
-    must(Commands.run(w, ex => Commands.buildRoadStop(w, idx(w, 17, 20), 0, false, ex), true));
-    must(Commands.run(w, ex => Commands.buildRoadStop(w, idx(w, 39, 20), 0, false, ex), true));
+    must(Commands.run(w, ex => Commands.buildRoadStop(w, idx(w, 13, 20), 0, false, ex), true));   // next to each town centre
+    must(Commands.run(w, ex => Commands.buildRoadStop(w, idx(w, 43, 20), 0, false, ex), true));
     must(Commands.run(w, ex => Commands.buildDepot(w, idx(w, 28, 21), 'road', 3, 0, ex), true));   // entrance NW
     const busE = engineByName('MPS Regal Bus');
     const buses = [];
