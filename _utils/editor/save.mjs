@@ -277,6 +277,7 @@ export const UI_FIELDS = {
   panel: ['parent', 'x', 'y', 'w', 'h', 'stretch', 'fill', 'border', 'radius', 'alpha', 'visible'],
   bar: ['parent', 'x', 'y', 'w', 'h', 'stretch', 'value', 'color', 'fill', 'border', 'radius', 'alpha', 'visible'],
   button: ['parent', 'x', 'y', 'w', 'h', 'stretch', 'text', 'fontSize', 'color', 'fill', 'border', 'radius', 'alpha', 'visible'],
+  canvas: ['parent', 'x', 'y', 'w', 'h', 'stretch', 'fill', 'border', 'radius', 'alpha', 'visible'],
 };
 
 // A field value -> its literal in the file; invalid — null.

@@ -16,6 +16,7 @@ class Train extends Vehicle {
         this.stopTarget = null;
         this.deadEndWait = 0;
         this.lost = false;
+        this.leftStation = -1;
         this._peek = null;
     }
 
@@ -241,27 +242,37 @@ class Train extends Vehicle {
         }
     }
 
+    /**
+     * The front entered a piece: stop at the far end of a platform of the ordered station — and,
+     * as in TTD, of any own station on the way unless the order is "non-stop".
+     */
     onEnterPiece(world, step) {
         if (step.w >= 0) return;
         const map = world.map, t = step.t;
-        const dest = this.destStation();
-        if (dest < 0 || this.stopTarget) return;
-        if (map.type[t] !== GameMap.T_STATION || map.sub[t] !== GameMap.ST_RAIL || map.obj[t] !== dest) return;
+        const isPlatform = map.type[t] === GameMap.T_STATION && map.sub[t] === GameMap.ST_RAIL;
+        if (!isPlatform || map.obj[t] !== this.leftStation) this.leftStation = -1;
+        if (!isPlatform || this.stopTarget) return;
         const track = step.td >> 1;
         if (track > 1) return;
-        // Stop with the front at the far end of the platform.
+        const sid = map.obj[t], st = world.stations[sid];
+        if (!st || st.owner !== this.owner || sid === this.leftStation) return;
+        const dest = this.destStation(), o = this.order();
+        if (sid !== dest) {
+            if (dest < 0 || !o || o.nonstop) return;
+        }
         const exit = Track.tdExit(step.td);
         let end = t;
         for (let i = 0; i < 64; i++) {
             const n = map.neighbour(end, exit);
-            if (n < 0 || map.type[n] !== GameMap.T_STATION || map.sub[n] !== GameMap.ST_RAIL || map.obj[n] !== dest || !(map.rail[n] & (1 << track))) break;
+            if (n < 0 || map.type[n] !== GameMap.T_STATION || map.sub[n] !== GameMap.ST_RAIL || map.obj[n] !== sid || !(map.rail[n] & (1 << track))) break;
             end = n;
         }
-        this.stopTarget = { t: end, track };
+        this.stopTarget = { t: end, track, station: sid };
     }
 
     arrive(world) {
-        const st = world.stations[this.destStation()];
+        const tgt = this.stopTarget;
+        const st = world.stations[tgt && tgt.station != null ? tgt.station : this.destStation()];
         this.stopTarget = null;
         this.speed = 0;
         if (st) this.startLoading(world, st);
@@ -269,6 +280,7 @@ class Train extends Vehicle {
     }
 
     finishLoading(world) {
+        this.leftStation = this.lastStation;   // no second stop at the station just served
         super.finishLoading(world);
         this._peek = null;
         this.path = null;

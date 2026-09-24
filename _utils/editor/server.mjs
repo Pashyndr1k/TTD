@@ -29,7 +29,7 @@ import { failure, isModelPath, isSoundPath, saveConstants, saveObjects, saveUI }
 
 // Server contract version. Bump on EVERY change of the endpoints or the
 // response format — the client checks it against EDITOR_API_VERSION in schema.js.
-const EDITOR_API_VERSION = 20;
+const EDITOR_API_VERSION = 21;
 
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..', '..');
 const MODELS_DIR = path.join(ROOT, 'assets', 'models');

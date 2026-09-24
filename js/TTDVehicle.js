@@ -46,6 +46,8 @@ class Vehicle {
         this.lost = false;
         this.x = 0; this.y = 0; this.z = 0; this.heading = 0;
         this.parts = [];
+        /** Positions before the last tick (Game.snapshot) — the renderer interpolates from them. */
+        this._prev = null;
     }
 
     get spec() { return World.ENGINE[this.engine]; }
@@ -293,7 +295,7 @@ class Vehicle {
 
     toJSON() {
         const o = Object.assign({}, this);
-        delete o.path; delete o.parts;
+        delete o.path; delete o.parts; delete o._prev;
         return o;
     }
 

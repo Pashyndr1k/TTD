@@ -70,6 +70,9 @@ class Gui {
         this.on('tb_ships', () => this.open('vlist', 'ship'));
         this.on('tb_air', () => this.open('vlist', 'air'));
         this.on('tb_news', () => this.open('news'));
+        this.on('tb_map', () => { const m = UI.get('minimap'); if (m) { m.show(!m.visible); this._mapT = 0; } });
+        const mm = UI.get('minimap');
+        if (mm) mm.onClick((el, e) => this.minimapClick(el, e));
         this.on('tb_query', () => g.setTool('query'));
         this.on('tb_land', () => this.openBar('land'));
         this.on('tb_demolish', () => { this.openBar(null); g.setTool('demolish'); });
@@ -727,8 +730,96 @@ class Gui {
         return lines.slice(0, 3).join('\n');
     }
 
+    // --- Minimap (TTD's map window: a diamond like the 3D view) --------------------------------------
+
+    /** Map colours of a tile (TTD's map legend, roughly). */
+    tileColor(t) {
+        const w = this.world, m = w.map, k = m.type[t];
+        switch (k) {
+            case GameMap.T_WATER: return m.sub[t] ? 0x6a6a70 : 0x2f6fa8;
+            case GameMap.T_HOUSE: return 0xb04a3a;
+            case GameMap.T_ROAD: return m.sub[t] === GameMap.ROAD_SUB_CROSSING ? 0x1d4f9a : 0x707074;
+            case GameMap.T_RAIL: case GameMap.T_TUNBRIDGE: return m.owner[t] === 0 ? 0x2a6ae0 : 0x707074;
+            case GameMap.T_STATION: return 0xf0f040;
+            case GameMap.T_INDUSTRY: {
+                const ind = w.industries[m.obj[t]];
+                const C = [0x303030, 0xa0a0a0, 0xa06a38, 0x2f6b35, 0x9090a0, 0x606060, 0xd06040, 0xa08040, 0x506070, 0xd0b050,
+                    0xc07040, 0x403040, 0xf0d040, 0xe05070, 0xa08040, 0xd0b040, 0xf0d040, 0xd0f0ff, 0xa05848, 0xf09030,
+                    0x305a28, 0x60a0f0, 0x60a0f0, 0xd06040, 0xe0c060, 0x8a6038];
+                return ind ? (C[ind.type] || 0xc050c0) : 0xc050c0;
+            }
+            case GameMap.T_OBJECT: return 0xf0f040;
+            case GameMap.T_TREES: return m.zone[t] === GameMap.Z_DESERT ? 0x9a9a50 : m.zone[t] === GameMap.Z_RAINFOREST ? 0x1f5a1c : 0x2f6a2a;
+        }
+        if (m.ground[t] === GameMap.G_DESERT || m.zone[t] === GameMap.Z_DESERT) return 0xd8c07a;
+        if (m.ground[t] === GameMap.G_FIELDS) return 0xb49a4a;
+        if (m.ground[t] === GameMap.G_ROCKS) return 0x8a8a80;
+        const h = m.tileMaxZ(t);
+        return m.zone[t] === GameMap.Z_RAINFOREST ? 0x3e7a2c : [0x5f9a3c, 0x5f9a3c, 0x6aa244, 0x74a84a, 0x7eae52, 0x88b45a][Math.min(5, h >> 1)];
+    }
+
+    /** Diamond projection: tile (x, y) -> canvas pixel; tile (0, 0) at the top like the 3D view. */
+    minimapProject(x, y, c) {
+        const m = this.world.map, k = c.width / Math.max(m.W, m.H);
+        return { px: c.width / 2 + (x - y) * k / 2, py: (x + y) * k / 2 };
+    }
+
+    drawMinimap() {
+        const e = UI.get('minimap');
+        const c = e && e.getCanvas();
+        if (!c || !this.world) return;
+        const g = c.getContext('2d');
+        const m = this.world.map, W = c.width, H = c.height, k = W / Math.max(m.W, m.H);
+        const img = g.createImageData(W, H), d = img.data;
+        for (let py = 0; py < H; py++) {
+            for (let px = 0; px < W; px++) {
+                const a = 2 * (px - W / 2) / k, b = 2 * py / k;
+                const x = Math.floor((a + b) / 2), y = Math.floor((b - a) / 2);
+                const o = (py * W + px) * 4;
+                if (x < 0 || y < 0 || x >= m.W || y >= m.H) { d[o + 3] = 0; continue; }
+                const col = this.tileColor(y * m.W + x);
+                d[o] = (col >> 16) & 255; d[o + 1] = (col >> 8) & 255; d[o + 2] = col & 255; d[o + 3] = 255;
+            }
+        }
+        g.putImageData(img, 0, 0);
+        // Vehicles and the camera.
+        g.fillStyle = '#ffffff';
+        for (const v of this.world.vehicles) {
+            if (!v || v.state === 'depot') continue;
+            const p = this.minimapProject(v.x, v.y, c);
+            g.fillRect(p.px - 1, p.py - 1, 2, 2);
+        }
+        const cam = this.game.camera, T = this.game.render.T;
+        if (cam) {
+            const p = this.minimapProject(cam.target.x / T, cam.target.y / T, c);
+            g.strokeStyle = '#ffffff';
+            g.lineWidth = 1.5;
+            g.strokeRect(p.px - 7, p.py - 5, 14, 10);
+        }
+    }
+
+    minimapClick(el, e) {
+        const c = el.getCanvas();
+        if (!c || !this.world || !e) return;
+        const r = c.getBoundingClientRect();
+        const px = (e.clientX - r.left) / r.width * c.width, py = (e.clientY - r.top) / r.height * c.height;
+        const m = this.world.map, k = c.width / Math.max(m.W, m.H);
+        const a = 2 * (px - c.width / 2) / k, b = 2 * py / k;
+        const x = (a + b) / 2, y = (b - a) / 2;
+        if (x < 0 || y < 0 || x >= m.W || y >= m.H) return;
+        const T = this.game.render.T;
+        this.game.camera.follow(null);
+        this.game.camera.lookAt(x * T, y * T);
+        this._mapT = 0;
+    }
+
     update(dt) {
         const w = this.world, g = this.game;
+        const mm = UI.get('minimap');
+        if (mm && mm.visible && w) {
+            this._mapT = (this._mapT || 0) - dt;
+            if (this._mapT <= 0) { this._mapT = 1; this.drawMinimap(); }
+        }
         if (this._msgT > 0 && (this._msgT -= dt) <= 0) this.show('msg', false);
         if (this._newsT > 0 && (this._newsT -= dt) <= 0) this.show('newsBox', false);
         if (!w) return;

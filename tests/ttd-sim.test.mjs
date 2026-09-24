@@ -176,6 +176,29 @@ test('сигналы: два поезда на кольце с блоками н
     assert.ok(waited > 0, 'a train waited at a red signal at least once');
 });
 
+test('TTD: без "non-stop" поезд останавливается на промежуточных станциях, с ним — проезжает', () => {
+    for (const nonstop of [false, true]) {
+        const w = flatWorld();
+        must(Commands.run(w, ex => Commands.buildRailStation(w, idx(w, 8, 30), 0, 1, 3, 0, ex), true));
+        for (let x = 11; x <= 19; x++) must(Commands.run(w, ex => Commands.buildRail(w, idx(w, x, 30), Track.X, 0, ex), true));
+        must(Commands.run(w, ex => Commands.buildRailStation(w, idx(w, 20, 30), 0, 1, 3, 0, ex), true));
+        for (let x = 23; x <= 31; x++) must(Commands.run(w, ex => Commands.buildRail(w, idx(w, x, 30), Track.X, 0, ex), true));
+        must(Commands.run(w, ex => Commands.buildRailStation(w, idx(w, 32, 30), 0, 1, 3, 0, ex), true));
+        must(Commands.run(w, ex => Commands.buildRail(w, idx(w, 14, 30), Track.LEFT, 0, ex), true));
+        must(Commands.run(w, ex => Commands.buildDepot(w, idx(w, 14, 29), 'rail', 1, 0, ex), true));
+        const tr = Vehicles.build(w, engineByName('Kirby Paul Tank (Steam)').id, 0);
+        tr.orders = [{ kind: 'station', dest: 0, nonstop }, { kind: 'station', dest: 2, nonstop }];
+        tr.stopped = false;
+        const seen = new Set();
+        for (let d = 0; d < 200 * 4; d++) {
+            for (let i = 0; i < 74 / 4; i++) w.tick();
+            if (tr.state === 'load') seen.add(tr.load.station);
+        }
+        assert.ok(seen.has(0) && seen.has(2), 'ordered stations served');
+        assert.equal(seen.has(1), !nonstop, nonstop ? 'non-stop passes B' : 'stops at B on the way');
+    }
+});
+
 test('сохранение и загрузка: мир восстанавливается и продолжает идти', () => {
     const w = new World({ seed: 5, mapLog2: 6, climate: 1 });
     w.generate();

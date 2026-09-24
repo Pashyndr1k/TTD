@@ -15,7 +15,7 @@
 // The server contract version this client expects. Must match
 // EDITOR_API_VERSION in server.mjs — otherwise the editor warns that editor.bat
 // is running old code (Node reads server files only at process start).
-const EDITOR_API_VERSION = 20;
+const EDITOR_API_VERSION = 21;
 
 // Ink edges and outline levels: 0 — off, 1 — main objects (actor), 2 — and environment (prop).
 const SCHEMA_LEVELS = [

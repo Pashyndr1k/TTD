@@ -153,7 +153,7 @@ class TTDRender3D {
     // --- Frame -----------------------------------------------------------------------------------
 
     /** Rebuild what changed; place vehicles. budget — chunks per frame (0 — all). */
-    update(dt, budget) {
+    update(dt, budget, alpha) {
         const m = this.map;
         if (m.dirty.size) {
             let n = 0;
@@ -165,7 +165,7 @@ class TTDRender3D {
             }
         }
         if (this.treesDirty) this.rebuildTrees();
-        this.updateVehicles();
+        this.updateVehicles(alpha == null ? 1 : alpha);
         this._sigTimer -= dt;
         if (this._sigTimer <= 0) { this._sigTimer = 0.2; this.updateSignals(); }
     }
@@ -385,14 +385,24 @@ class TTDRender3D {
         return g;
     }
 
-    updateVehicles() {
+    /** Place every visible car; alpha 0..1 — between the previous tick's and the current position. */
+    updateVehicles(alpha) {
         const w = this.world, T = this.T, L = this.L;
         for (const g of this.vehicleGroups.values()) g.items.length = 0;
+        const tmp = { x: 0, y: 0, z: 0, heading: 0, grade: 0 };
         for (const v of w.vehicles) {
             if (!v || v.state === 'depot' || !v.parts) continue;
             for (let i = 0; i < v.cars.length && i < v.parts.length; i++) {
-                const p = v.parts[i];
+                let p = v.parts[i];
                 if (p.hidden) continue;
+                const q = v._prev && v._prev[i];
+                if (q && !q.hidden && alpha < 1 && Math.abs(q.x - p.x) + Math.abs(q.y - p.y) < 1.5) {
+                    let dh = p.heading - q.heading;
+                    dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+                    tmp.x = q.x + (p.x - q.x) * alpha; tmp.y = q.y + (p.y - q.y) * alpha; tmp.z = q.z + (p.z - q.z) * alpha;
+                    tmp.heading = q.heading + dh * alpha; tmp.grade = p.grade;
+                    p = tmp;
+                }
                 const car = v.cars[i];
                 if (v.type === 'air' && i > 0) continue;   // the mail compartment is the same aircraft
                 const g = this.vehicleGroup(w, car);

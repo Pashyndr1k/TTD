@@ -9,7 +9,8 @@
 //     UI.add(Object.assign({}, UI.def('slot'), { id: 'slot2', x: 140 }));
 //
 // Record: { id, kind, anchor, x, y, w, h, … } (the full field list — UI.DEFAULTS).
-//   kind   — 'text' | 'panel' | 'bar' | 'button'.
+//   kind   — 'text' | 'panel' | 'bar' | 'button' | 'canvas' (a picture the game draws: a minimap;
+//            getCanvas() gives the <canvas> of w × h pixels, onClick(fn) gets (element, event)).
 //   anchor — one of 9 screen points ('top-left' … 'bottom-right'): x and y go from it to THE
 //            SAME point of the element — inward from a screen edge, signed from the center.
 //            A 'bottom-right' element at x 20, y 20 keeps its bottom right corner 20 px from
@@ -28,7 +29,7 @@
 const UI = {
     ANCHORS: ['top-left', 'top-center', 'top-right', 'middle-left', 'middle-center', 'middle-right',
         'bottom-left', 'bottom-center', 'bottom-right'],
-    KINDS: ['text', 'panel', 'bar', 'button'],
+    KINDS: ['text', 'panel', 'bar', 'button', 'canvas'],
     FONT: 'system-ui, "Segoe UI", Roboto, sans-serif',
 
     // Fields of a record by kind and their defaults — a new element in the editor starts from them.
@@ -37,6 +38,7 @@ const UI = {
         panel: { parent: '', anchor: 'top-left', x: 20, y: 20, w: 240, h: 80, stretch: '', fill: '#10202c', border: '', radius: 10, alpha: 0.7, visible: 1 },
         bar: { parent: '', anchor: 'top-left', x: 20, y: 20, w: 240, h: 18, stretch: '', value: 0.6, color: '#5ad05a', fill: '#10202c', border: '#ffffff', radius: 9, alpha: 1, visible: 1 },
         button: { parent: '', anchor: 'bottom-center', x: 0, y: 40, w: 180, h: 48, stretch: '', text: 'Button', fontSize: 20, color: '#ffffff', fill: '#2a6fb0', border: '', radius: 10, alpha: 1, visible: 1 },
+        canvas: { parent: '', anchor: 'top-left', x: 20, y: 20, w: 160, h: 160, stretch: '', fill: '#10202c', border: '', radius: 0, alpha: 1, visible: 1 },
     },
 
     /** @type {HTMLElement | null} */
@@ -220,9 +222,9 @@ class UIElement {
         this._shown = prev ? prev._shown : null;
         this._click = prev ? prev._click : null;
         this.el.addEventListener('click', (e) => {
-            if (UI.editing || this.def.kind !== 'button' || !this._click) return;
+            if (UI.editing || (this.def.kind !== 'button' && this.def.kind !== 'canvas') || !this._click) return;
             e.stopPropagation();
-            this._click(this);
+            this._click(this, e);
         });
     }
 
@@ -234,6 +236,11 @@ class UIElement {
     show(on) { this._shown = on !== false; this.apply(); return this; }
 
     onClick(fn) { this._click = fn || null; return this; }
+
+    /** canvas kind: the <canvas> the game draws into (w × h pixels of the layout); null otherwise. */
+    getCanvas() {
+        return this.inner && this.inner.tagName === 'CANVAS' ? /** @type {HTMLCanvasElement} */ (this.inner) : null;
+    }
 
     get visible() {
         return this._shown != null ? this._shown : this.def.visible !== 0;
@@ -259,8 +266,9 @@ class UIElement {
         s.opacity = String(d.alpha == null ? 1 : Math.max(0, Math.min(1, Number(d.alpha))));
         s.display = this.visible || UI.editing ? 'block' : 'none';
         if (UI.editing && !this.visible) s.opacity = String(Number(s.opacity) * 0.35);
-        s.pointerEvents = UI.editing || d.kind === 'button' ? 'auto' : 'none';
-        s.cursor = UI.editing ? 'move' : d.kind === 'button' ? 'pointer' : '';
+        const clickable = d.kind === 'button' || d.kind === 'canvas';
+        s.pointerEvents = UI.editing || clickable ? 'auto' : 'none';
+        s.cursor = UI.editing ? 'move' : clickable ? 'pointer' : '';
 
         if (sized) {
             s.background = d.fill || 'transparent';
@@ -269,6 +277,21 @@ class UIElement {
             s.overflow = 'hidden';
         }
         const label = d.kind === 'text' || d.kind === 'button';
+        if (d.kind === 'canvas') {
+            // The picture keeps its pixels across apply(): the size changes only with the record.
+            if (!this.inner || this.inner.tagName !== 'CANVAS') {
+                if (this.inner) this.inner.remove();
+                this.inner = document.createElement('canvas');
+                this.el.appendChild(this.inner);
+            }
+            const c = /** @type {HTMLCanvasElement} */ (this.inner);
+            const cw = Math.max(1, Math.round(Number(d.w) || 1)), ch = Math.max(1, Math.round(Number(d.h) || 1));
+            if (c.width !== cw) c.width = cw;
+            if (c.height !== ch) c.height = ch;
+            c.style.cssText = 'display: block; width: 100%; height: 100%;';
+            return;
+        }
+        if (this.inner && this.inner.tagName === 'CANVAS') { this.inner.remove(); this.inner = null; }
         if (label || d.kind === 'bar') {
             if (!this.inner) {
                 this.inner = document.createElement('div');

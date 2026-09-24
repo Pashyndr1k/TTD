@@ -268,6 +268,20 @@ class Game {
         }
     }
 
+    /** Remember where every vehicle part stands before the last tick of a frame. */
+    snapshot() {
+        for (const v of this.world.vehicles) {
+            if (!v || !v.parts) continue;
+            const prev = v._prev || (v._prev = []);
+            prev.length = v.parts.length;
+            for (let i = 0; i < v.parts.length; i++) {
+                const p = v.parts[i];
+                const q = prev[i] || (prev[i] = { x: 0, y: 0, z: 0, heading: 0, grade: 0, hidden: true });
+                q.x = p.x; q.y = p.y; q.z = p.z; q.heading = p.heading; q.grade = p.grade; q.hidden = p.hidden;
+            }
+        }
+    }
+
     // --- Frame ----------------------------------------------------------------------------------------
 
     update(dt) {
@@ -280,9 +294,14 @@ class Game {
             const cap = this.fast ? 400 : 12;
             if (n > cap) { n = cap; this.acc = 0; }
             else this.acc -= n * ms;
-            for (let i = 0; i < n; i++) w.tick();
+            for (let i = 0; i < n; i++) {
+                if (i === n - 1) this.snapshot();
+                w.tick();
+            }
         }
-        this.render.update(dt, 6);
+        // Vehicles are drawn between the last two ticks (smooth at any frame rate).
+        const alpha = this.paused ? 1 : IMath.clamp(this.acc / Game.tickMs(), 0, 1);
+        this.render.update(dt, 6, alpha);
         if (this.hoverDirty || this.down) this.updateHover();
         this.render.setSelected(this.selected);
         if (this._tipT > 0) this._tipT -= dt;
