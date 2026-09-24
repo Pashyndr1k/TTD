@@ -28,6 +28,8 @@ than TTD.
 | `servint_*` | 150 / 150 / 360 / 100 days | Service intervals | `TTD_SERVICE_DAYS_*` |
 | `station_spread` | 12 | Maximum station size | `Commands.joinable` |
 | `road_side` | right | Road vehicles keep to one lane | `Track.roadPoint` |
+| `build_on_slopes` | true | Foundations under road, track and buildings on slopes | `GameMap.roadFoundation` |
+| `extra_dynamite` | true | Town roads can be cut in the middle, not only at their ends | `TTD_EXTRA_DYNAMITE = 1` |
 
 The 18 fields of `diff_custom` decoded (OpenTTD 0.5 `GameDifficulty`):
 
@@ -83,6 +85,55 @@ The 18 fields of `diff_custom` decoded (OpenTTD 0.5 `GameDifficulty`):
 Track and road only connect across an edge when both ends are at the same height.
 The generator is simplex noise shaped into levels, the sea and desert/rainforest zones.
 Land lowered to sea level next to water floods.
+
+## 2a. Roads (TTD's `road_cmd.c`)
+
+- **Pieces:** a road tile holds up to four half pieces, one from the centre to each edge. A lone
+  half is a dead end; vehicles turn round at the end of it.
+- **Tools:** two road tools, one per axis (╱ NE–SW and ╲ NW–SE). A drag runs along that axis
+  from the half tile under the press to the half tile under the release, so a click builds
+  one half. The whole drag is built or none of it: the first tile that can't take road (a
+  house, a station, a wrong slope) stops it. Pieces already built are skipped and not paid for.
+- **Cost:** £95 per new half piece, plus clearing the land (grass, trees, fields…), plus £250
+  for a foundation.
+- **Slopes** (TTD's `_valid_tileh_slopes_road`):
+  - flat land takes any pieces;
+  - an incline takes the straight road along it with no foundation. A half piece is completed
+    into the whole straight road;
+  - a levelled foundation (a flat top at the highest corner) takes the pieces that stay on the
+    raised side. On slopes with three corners raised, or two opposite ones, that is any pieces;
+  - a one-corner or steep slope also takes a whole straight road on an inclined foundation:
+    the tile is raised into an incline along the road;
+  - anything else is "Land sloped in wrong direction", and a foundation can't be changed once
+    road is on it.
+- **Level crossings:** a road across a single straight track, on flat land or a levelled
+  foundation. Any piece across the track builds the whole crossing (£95 × 2). Demolishing a
+  crossing removes its road and leaves the track.
+- **Removing:** a straight road on a slope goes as a whole. Town roads:
+  - the local authority must allow it: its rating of you must be at least 16, 64 or 112
+    (permissive, tolerant or hostile council);
+  - the town's rating drops by 18 for the end of a road and by 50 for a piece in the middle;
+  - a piece in the middle (the tile joins two or more roads) can only go with `extra_dynamite`.
+- **Depots:** on a slope the side with the entrance must be raised (TTD's
+  `CanBuildDepotByTileh`). A depot doesn't connect to the road by itself: lead a half road
+  into it.
+- **Roadside** (TTD's `TileLoop_Road`, every 256 ticks per tile): the verges move one step at a
+  time toward what the nearest town's zone wants:
+  - new road starts bare;
+  - grass outside towns;
+  - pavement in zones 1–2;
+  - trees in zone 3;
+  - street lights in the centre.
+
+  Player and town roads alike.
+- **Road works:** after "Fund local road reconstruction" (6 months) the town digs up straight
+  flat roads within 8 tiles of its centre or inside its zones. Each tile loop has a 1 in 20
+  chance per tile. A dug-up tile is closed to traffic for 15 tile loops (about 52 days), and
+  vehicles route around it.
+
+**Remake:** all of the above (`Commands.buildRoad`, `removeRoad`, `roadDrag`, `buildLongRoad`,
+`removeLongRoad`; `GameMap.roadSlopeCheck`, `roadFoundation`, `roadEdgeZ`, `roadTop`;
+`World.roadTileLoop`). The 3D view draws levelled and inclined foundations with cliff walls.
 
 ## 3. Cargo and payment
 
@@ -208,8 +259,21 @@ join it, up to a spread of 12.
   buildings, exclusive rights, bribe (1 in 15 gets caught).
 - A **hostile** council refuses demolition below 112 points and new stations at "Very Poor".
 
-**Remake:** implemented (`js/TTDTown.js`). The road network grows on a grid of 3 or 4 tiles
-instead of TTD's organic layouts.
+- **Road growth** (TTD's `GrowTown`, `GrowTownAtRoad`, `GrowTownInTile`, `IsRoadAllowedHere`):
+  - the town takes the first road within two tiles of its centre (any road, the player's
+    too; half pieces don't count) and walks it at random for `10 + houses × 4/9` steps;
+  - on the way it may complete a half road, extend a road by half a tile, or put a house
+    beside the road (60 %, or always where no road may go);
+  - a walk that reaches a tile with no road starts a road block there, straight on or turning
+    with a 1-in-4 chance, and stops;
+  - a new road may not run right beside a parallel road;
+  - on sloped land the town first tries to level the tile (up to 8 corners of terraforming);
+    else the road must run along an incline;
+  - the walk goes through road tunnels and doesn't use other towns' roads;
+  - a new town grows `4x` times with `x` = 8–23 extra houses counted for its radius.
+
+**Remake:** implemented (`js/TTDTown.js`). Town roads use the player's road command, so they
+obey the same slope and crossing rules. Towns don't build bridges.
 
 ## 7. Vehicles
 
@@ -234,8 +298,9 @@ prices, running costs, speeds, power, weight, capacity and lifespans.
   the far end of the platform.
 - **Block signals:** a train may pass a signal only while the block behind it is empty.
   Without signals trains can crash, as in TTD.
-- **Road vehicles** use drive-through stops, queue behind each other and wait at level
-  crossings. A train hitting a road vehicle on a crossing destroys it.
+- **Road vehicles** use drive-through stops (TTD has bay stops that vehicles enter and turn
+  round in). They queue behind each other, wait at level crossings and turn round at dead
+  ends and road works. A train hitting a road vehicle on a crossing destroys it.
 - **Ships** sail on water tiles to the water in front of a dock.
 - **Aircraft** taxi, take off, cruise, approach and land. They need a free terminal and hold
   above the airport otherwise. Fast jets can crash on a small airport.
@@ -293,8 +358,8 @@ prices, running costs, speeds, power, weight, capacity and lifespans.
 - **AI competitors:** the remake is single-player.
 - **Oil rigs and sub-arctic/toyland climates:** the data is there, but they aren't used.
 - **Pre-signals and path signals:** only block signals (one-way and two-way) are implemented.
-- **Intermediate stops:** trains without "non-stop" orders don't halt at stations they pass through.
 - **Disasters.**
-- **Graphs, the league table and the minimap.**
+- **Graphs and the league table.**
+- **Towns building bridges,** and TTD's bay road stops (the remake's stops are drive-through).
 - **Refitting, shares and company buyouts.**
 - **Other:** canals, buoys and waypoints.

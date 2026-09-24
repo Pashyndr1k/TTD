@@ -370,8 +370,12 @@ const Models = {
         b.box(-2.2, T * 0.26, -2.2, 2.2, T * 0.38, 2.2, green ? C('#30e040') : C('#f03020'), { ox: ox + px, oz: oy + py, oy: z });
     },
 
-    /** Road surface for the road bits of a tile. */
-    roadTile(b, bits, ox, oy, zAt, town) {
+    /**
+     * Road surface for the road bits of a tile. rs — roadside (GameMap.RS_*): pavements on paved
+     * roadsides, and street lamps too with RS_LIGHTS; works — road works barriers.
+     */
+    roadTile(b, bits, ox, oy, zAt, rs, works) {
+        const town = rs === GameMap.RS_PAVED || rs === GameMap.RS_LIGHTS;
         const T = Models.T, C = Models.C;
         const asphalt = C('#5a5a5c'), line = C('#d8d0b0'), walk = C('#a8a49c');
         const up = 1.2;
@@ -396,6 +400,24 @@ const Models = {
             if (!(bits & 2)) P(w0 - 0.08, w1, w1 + 0.08, w1 + 0.08);
             if (!(bits & 1)) P(w0 - 0.08, w0, w0, w1);
             if (!(bits & 4)) P(w1, w0, w1 + 0.08, w1);
+        }
+        if (rs === GameMap.RS_LIGHTS) {
+            // Lamp posts on the pavement at two corners.
+            for (const [u, v] of [[w0 - 0.05, w0 - 0.05], [w1 + 0.05, w1 + 0.05]]) {
+                const z = zAt(u, v) + up;
+                b.box(-0.8, 0, -0.8, 0.8, T * 0.34, 0.8, C('#3a3a40'), { ox: ox + u * T, oz: oy + v * T, oy: z });
+                b.box(-2, T * 0.32, -2, 2, T * 0.37, 2, C('#f4e8a0'), { ox: ox + u * T, oz: oy + v * T, oy: z });
+            }
+        }
+        if (works) {
+            // Dug-up middle and red and white barriers across the road at both ends.
+            Q(0.3, 0.3, 0.7, 0.7, C('#6a5038'), 0.3);
+            const bar = (u0, v0, u1, v1) => {
+                const zz = zAt((u0 + u1) / 2, (v0 + v1) / 2) + up;
+                b.box(u0 * T, 0, v0 * T, u1 * T, T * 0.1, v1 * T, C('#d83028'), { ox, oz: oy, oy: zz, top: C('#f0f0f0') });
+            };
+            if (bits === 5) { bar(0.18, w0, 0.24, w1); bar(0.76, w0, 0.82, w1); }
+            else { bar(w0, 0.18, w1, 0.24); bar(w0, 0.76, w1, 0.82); }
         }
     },
 

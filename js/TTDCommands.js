@@ -120,12 +120,7 @@ const Commands = {
                 }
             case GameMap.T_ROAD: {
                 if (map.sub[t] === GameMap.ROAD_SUB_DEPOT) return Commands.removeDepot(world, t, exec);
-                if (map.sub[t] === GameMap.ROAD_SUB_CROSSING) {
-                    // Remove the rail first (TTD removes one thing at a time).
-                    if (map.owner[t] !== 0) return Commands.fail('Owned by another company');
-                    if (exec) { map.rail[t] = 0; map.sub[t] = 0; map.signals[t] = 0; map.owner[t] = map.roadOwner[t]; world.railVersion++; map.markDirty(t); }
-                    return Commands.ok(world.price('removeRail'));
-                }
+                // A level crossing loses its road and keeps the track (TTD's ClearTile_Road).
                 return Commands.removeRoad(world, t, map.road[t], exec);
             }
             case GameMap.T_STATION: return Commands.removeStationPart(world, t, exec);
@@ -165,11 +160,14 @@ const Commands = {
             return Commands.ok(cost);
         }
         if (k === GameMap.T_ROAD && map.sub[t] === 0) {
-            // Level crossing: straight road across the straight track, flat land.
+            // Level crossing: straight track across a straight road, flat or on a levelled foundation.
             const roadAxis = map.road[t] === 5 ? 0 : map.road[t] === 10 ? 1 : -1;
             if (track > 1 || roadAxis < 0 || roadAxis === track) return Commands.fail('Must remove road first');
-            if (!map.isFlat(t)) return Commands.fail('Flat land required');
+            if (!Commands.crossingSlopeOk(map, t)) return Commands.fail('Land sloped in wrong direction');
+            if (map.roadWorks(t)) return Commands.fail('Road works in progress');
+            if (Commands.vehicleOn(world, t)) return Commands.fail('Road vehicle in the way');
             if (exec) {
+                map.density[t] &= 7;
                 map.sub[t] = GameMap.ROAD_SUB_CROSSING;
                 map.rail[t] = bit;
                 map.railType[t] = railType;
@@ -252,83 +250,192 @@ const Commands = {
 
     // --- Roads -------------------------------------------------------------------------------
 
-    buildRoad(world, t, bits, exec) {
+    /** Number of road bits set. */
+    roadCount(bits) { return (bits & 1) + (bits >> 1 & 1) + (bits >> 2 & 1) + (bits >> 3 & 1); },
+
+    /** Slopes a level crossing may stand on (TTD: flat, or a levelled foundation). */
+    crossingSlopeOk(map, t) {
+        const s = map.slope(t);
+        return s === 0 || s === 5 || s === 7 || s === 10 || s === 11 || s === 13 || s === 14;
+    },
+
+    /**
+     * TTD's CmdBuildRoad: add road bits (1 << DiagDir) to tile t. On a slope TTD completes a half
+     * road into the full straight one and charges a foundation; on straight track it makes a
+     * level crossing (any piece across the track does). Pieces already there are not paid again.
+     */
+    buildRoad(world, t, bits, exec, town) {
         const map = world.map;
+        const owner = town ? GameMap.OWNER_TOWN : 0, townId = town ? town.id : -1;
         if (!map.valid(map.tx(t), map.ty(t))) return Commands.fail('Off edge of map');
+        if (!bits) return Commands.fail('Already built');
         const k = map.type[t];
-        let n = 0;
-        if (k === GameMap.T_ROAD && map.sub[t] === 0) {
-            const add = bits & ~map.road[t];
-            if (!add) return Commands.fail('Already built');
-            const all = map.road[t] | add;
-            if (map.inclineAxis(t) >= 0 && !(all === 5 && map.inclineAxis(t) === 0 || all === 10 && map.inclineAxis(t) === 1 ||
-                (all & ~(map.inclineAxis(t) === 0 ? 5 : 10)) === 0)) return Commands.fail('Land sloped in wrong direction');
-            for (let d = 0; d < 4; d++) if (add & (1 << d)) n++;
-            if (exec) { map.road[t] = all; map.markDirty(t); }
-            return Commands.ok(world.price('buildRoad') * n);
+        if (k === GameMap.T_ROAD && map.sub[t] === GameMap.ROAD_SUB_CROSSING) {
+            if (bits & ~map.road[t]) return Commands.fail('Must remove railway track first');
+            return Commands.fail('Already built');
         }
+        if (k === GameMap.T_ROAD && map.sub[t] === GameMap.ROAD_SUB_DEPOT) return Commands.fail('Must demolish road depot first');
+        // Drive-through stops and bridge/tunnel heads already carry their road.
+        if ((k === GameMap.T_STATION || k === GameMap.T_TUNBRIDGE) && map.road[t] && !(bits & ~map.road[t])) return Commands.fail('Already built');
         if (k === GameMap.T_RAIL && map.sub[t] === 0) {
-            // Level crossing on straight track.
+            // Level crossing: a road across a single straight track, flat or on a levelled foundation.
             const tr = map.rail[t];
-            if (!(tr === 1 && bits === 10) && !(tr === 2 && bits === 5)) return Commands.fail('Must remove railway track first');
-            if (!map.isFlat(t)) return Commands.fail('Flat land required');
+            const across = tr === 1 ? GameMap.ROAD_Y : tr === 2 ? GameMap.ROAD_X : 0;
+            if (!across || (bits & ~across)) return Commands.fail('Must remove railway track first');
+            if (!Commands.crossingSlopeOk(map, t)) return Commands.fail('Land sloped in wrong direction');
+            if (Commands.vehicleOn(world, t)) return Commands.fail('Train in the way');
             if (exec) {
                 map.type[t] = GameMap.T_ROAD;
                 map.sub[t] = GameMap.ROAD_SUB_CROSSING;
-                map.road[t] = bits;
-                map.roadOwner[t] = 0;
+                map.road[t] = across;
+                map.roadOwner[t] = owner;
+                map.town[t] = townId;
+                map.density[t] = GameMap.RS_BARREN;
                 map.markDirty(t);
                 world.railVersion++;
             }
             return Commands.ok(world.price('buildRoad') * 2);
         }
-        if (!map.isClearable(t)) return Commands.fail(Commands.occupiedMsg(world, t));
-        if (map.over[t] >= 0 && world.wormholes[map.over[t]] && map.tileMaxZ(t) + 1 >= world.wormholes[map.over[t]].z) return Commands.fail('Bridge in the way');
-        const ax = bits === 5 || bits === 1 || bits === 4 ? 0 : bits === 10 || bits === 2 || bits === 8 ? 1 : -1;
-        let cost = Commands.clearCost(world, t);
-        const sl = Commands.slopeFor(world, t, ax);
-        if (map.inclineAxis(t) >= 0 && ax !== map.inclineAxis(t)) cost += world.price('terraform');
-        else if (sl.found) cost += world.price('terraform');
-        for (let d = 0; d < 4; d++) if (bits & (1 << d)) n++;
-        cost += world.price('buildRoad') * n;
+        const onRoad = k === GameMap.T_ROAD;
+        const existing = onRoad ? map.road[t] : 0;
+        if (onRoad && (existing & bits) === bits) return Commands.fail('Already built');
+        if (!onRoad) {
+            if (!map.isClearable(t)) return Commands.fail(Commands.occupiedMsg(world, t));
+            if (map.over[t] >= 0 && world.wormholes[map.over[t]] && map.tileMaxZ(t) + 1 >= world.wormholes[map.over[t]].z) return Commands.fail('Bridge in the way');
+        }
+        const sl = map.roadSlopeCheck(t, bits, existing);
+        if (!sl) return Commands.fail('Land sloped in wrong direction');
+        const add = sl.pieces & ~existing;
+        if (onRoad && Commands.vehicleOn(world, t)) return Commands.fail('Road vehicle in the way');
+        let cost = world.price('buildRoad') * Commands.roadCount(add) + (sl.found ? world.price('terraform') : 0);
+        if (!onRoad) cost += Commands.clearCost(world, t);
         if (exec) {
-            Commands.clearForBuild(world, t, true);
-            map.type[t] = GameMap.T_ROAD;
-            map.road[t] = bits;
-            map.roadOwner[t] = 0;
-            map.owner[t] = 0;
+            if (onRoad) map.road[t] = existing | add;
+            else {
+                if (town) map.setClear(t, map.ground[t] === GameMap.G_DESERT || map.zone[t] === GameMap.Z_DESERT ? GameMap.G_DESERT : GameMap.G_GRASS);
+                else Commands.clearForBuild(world, t, true);
+                map.type[t] = GameMap.T_ROAD;
+                map.road[t] = add;
+                map.roadOwner[t] = owner;
+                map.owner[t] = owner;
+                map.town[t] = townId;
+                map.density[t] = GameMap.RS_BARREN;
+            }
             map.markDirty(t);
         }
         return Commands.ok(cost);
     },
 
+    /**
+     * TTD's CheckAllowRemoveRoad for a town road: taking a piece out of the middle of a town's
+     * network (the tile joins two or more neighbours and a joined piece goes) needs the "extra
+     * dynamite" setting. Returns { ok, edge } — edge: an end of the road (smaller rating penalty).
+     */
+    townRoadRemovable(world, t, rem) {
+        const map = world.map, present = map.road[t];
+        let n = 0;
+        for (let d = 0; d < 4; d++) {
+            if (!(present & (1 << d))) continue;
+            const nb = map.neighbour(t, d);
+            if (nb >= 0 && Track.roadBits(map, nb) & (1 << Dir.reverse(d))) n |= 1 << d;
+        }
+        if ((n & (n - 1)) !== 0 && (n & rem) !== 0) return { ok: !!world.settings.extraDynamite, edge: false };
+        return { ok: true, edge: true };
+    },
+
+    /**
+     * TTD's CmdRemoveRoad: take road bits off tile t. A straight road on a slope goes as a whole;
+     * a level crossing loses its road and keeps the track. Town roads: the local authority must
+     * allow it and its rating drops (50, or 18 for the end of a road).
+     */
     removeRoad(world, t, bits, exec) {
         const map = world.map;
         if (map.type[t] !== GameMap.T_ROAD || map.sub[t] === GameMap.ROAD_SUB_DEPOT) return Commands.fail('There is no road here');
-        const rem = bits & map.road[t];
+        const crossing = map.sub[t] === GameMap.ROAD_SUB_CROSSING;
+        const present = map.road[t];
+        let rem;
+        if (crossing) {
+            if (bits & ~present) return Commands.fail('There is no road here');
+            rem = present;
+        } else {
+            rem = bits;
+            if (!map.isFlat(t) && (present === GameMap.ROAD_X || present === GameMap.ROAD_Y)) rem |= ((rem & 3) << 2) | ((rem & 12) >> 2);
+            rem &= present;
+        }
         if (!rem) return Commands.fail('There is no road here');
+        let town = null, edge = true;
         if (map.roadOwner[t] === GameMap.OWNER_TOWN) {
-            const town = world.towns[map.town[t]];
+            town = world.towns[map.town[t]] || world.nearestTown(t);
+            const r = Commands.townRoadRemovable(world, t, rem);
+            if (!r.ok) return Commands.fail('It\'s owned by ' + (town ? town.name : 'a town'));
+            edge = r.edge;
             if (!Commands.townAllows(world, town, 0)) return Commands.fail((town ? town.name : 'The') + ' local authority refuses to allow this');
-        } else if (map.roadOwner[t] !== 0) return Commands.fail('Owned by another company');
+        } else if (map.roadOwner[t] !== 0 && map.roadOwner[t] !== GameMap.OWNER_NONE) return Commands.fail('Owned by another company');
         if (Commands.vehicleOn(world, t)) return Commands.fail('Road vehicle in the way');
-        let n = 0;
-        for (let d = 0; d < 4; d++) if (rem & (1 << d)) n++;
         if (exec) {
-            if (map.roadOwner[t] === GameMap.OWNER_TOWN) {
-                const town = world.towns[map.town[t]];
-                if (town) town.changeRating(0, -50 * n, -100);
-            }
-            if (map.sub[t] === GameMap.ROAD_SUB_CROSSING) {
-                map.type[t] = GameMap.T_RAIL; map.sub[t] = 0; map.road[t] = 0; map.owner[t] = 0;
+            if (town) town.changeRating(0, edge ? -18 : -50, -100);
+            if (crossing) {
+                map.type[t] = GameMap.T_RAIL; map.sub[t] = 0; map.road[t] = 0; map.density[t] = 0;
+                map.roadOwner[t] = GameMap.OWNER_NONE; map.town[t] = -1;
                 world.railVersion++;
             } else {
-                map.road[t] &= ~rem;
+                map.road[t] = present & ~rem;
                 if (!map.road[t]) map.setClear(t, GameMap.G_GRASS);
             }
             map.markDirty(t);
         }
-        return Commands.ok(world.price('removeRoad') * n);
+        return Commands.ok(world.price('removeRoad') * Commands.roadCount(rem));
+    },
+
+    /**
+     * Road bits of a drag with TTD's road tool (CmdBuildLongRoad): tiles from `a` to `b` along
+     * `axis` (0 — X, NE–SW; 1 — Y, NW–SE) at half-tile steps. a, b — tile-space points; the half
+     * tiles under both points and all between are covered. Returns [{ t, bits }].
+     */
+    roadDrag(map, a, b, axis) {
+        const ca = axis === 0 ? a.fx : a.fy, cb = axis === 0 ? b.fx : b.fy;
+        let h0 = Math.floor(ca * 2), h1 = Math.floor(cb * 2);
+        if (h0 > h1) { const s = h0; h0 = h1; h1 = s; }
+        const fixed = Math.floor(axis === 0 ? a.fy : a.fx);
+        const lo = axis === 0 ? 1 : 8, hi = axis === 0 ? 4 : 2;   // NE / SW, or NW / SE
+        const out = [];
+        for (let i = h0 >> 1; i <= h1 >> 1 && out.length < 256; i++) {
+            const bits = (2 * i >= h0 ? lo : 0) | (2 * i + 1 <= h1 ? hi : 0);
+            const x = axis === 0 ? i : fixed, y = axis === 0 ? fixed : i;
+            if (map.inside(x, y)) out.push({ t: map.idx(x, y), bits });
+        }
+        return out;
+    },
+
+    /** Build a drag of road (roadDrag list): all or nothing, pieces already there are skipped. */
+    buildLongRoad(world, list, exec) {
+        let cost = 0, any = false;
+        for (const q of list) {
+            const r = Commands.buildRoad(world, q.t, q.bits, false);
+            if (!r.ok) {
+                if (r.err === 'Already built') continue;
+                return Object.assign(Commands.fail(r.err), { tile: q.t });
+            }
+            any = true;
+            cost += r.cost;
+        }
+        if (!any) return Commands.fail('Already built');
+        if (exec) for (const q of list) Commands.buildRoad(world, q.t, q.bits, true);
+        return Commands.ok(cost);
+    },
+
+    /** Remove a drag of road: whatever may go goes; fails only if nothing could be removed. */
+    removeLongRoad(world, list, exec) {
+        let cost = 0, first = null;
+        for (const q of list) {
+            const map = world.map;
+            if (map.type[q.t] !== GameMap.T_ROAD) continue;
+            const r = Commands.removeRoad(world, q.t, q.bits, exec);
+            if (r.ok) cost += r.cost;
+            else if (!first) first = r;
+        }
+        if (!cost) return first || Commands.fail('There is no road here');
+        return Commands.ok(cost);
     },
 
     // --- Depots ------------------------------------------------------------------------------
@@ -345,7 +452,10 @@ const Commands = {
             cost = world.price('buildShipDepot');
         } else {
             if (!map.isClearable(t)) return Commands.fail(Commands.occupiedMsg(world, t));
-            if (map.slope(t) & GameMap.SLOPE_STEEP) return Commands.fail('Land sloped in wrong direction');
+            // TTD's CanBuildDepotByTileh: on a slope the entrance side must be raised (the levelled
+            // foundation then meets the road or track in front).
+            const s = map.slope(t);
+            if ((s & GameMap.SLOPE_STEEP) || (s && !((0x4C >> dir) & s))) return Commands.fail('Land sloped in wrong direction');
             cost = world.price(kind === 'rail' ? 'buildTrainDepot' : 'buildRoadDepot') + Commands.clearCost(world, t);
             if (!map.isFlat(t)) cost += world.price('terraform');
         }
@@ -359,15 +469,7 @@ const Commands = {
                 map.type[t] = kind === 'rail' ? GameMap.T_RAIL : GameMap.T_ROAD;
                 map.sub[t] = kind === 'rail' ? GameMap.RAIL_SUB_DEPOT : GameMap.ROAD_SUB_DEPOT;
                 if (kind === 'rail') { map.rail[t] = 1 << Track.axisTrack(Dir.axis(dir)); map.railType[t] = railType || 0; world.railVersion++; }
-                else {
-                    map.road[t] = 1 << dir;
-                    // Join the road in front of the entrance (straight roads only, like a drag would).
-                    const n = map.neighbour(t, dir);
-                    if (n >= 0 && map.type[n] === GameMap.T_ROAD && map.sub[n] === 0) {
-                        map.road[n] |= 1 << Dir.reverse(dir);
-                        map.markDirty(n);
-                    }
-                }
+                else map.road[t] = 1 << dir;   // the road in front must be built up to it, as in TTD
             }
             map.obj[t] = id;
             map.owner[t] = 0;
@@ -766,14 +868,19 @@ const Commands = {
     // --- Landscaping ---------------------------------------------------------------------------
 
     /** Raise (+1) or lower (−1) the corner (cx, cy). */
-    terraform(world, cx, cy, dir, exec) {
-        const map = world.map;
-        const plan = map.planTerraform(cx, cy, dir, (t) => {
+    /** Tiles whose corners terraforming may move: bare land and trees (water only upward). */
+    terraformAllows(map, dir) {
+        return (t) => {
             const k = map.type[t];
             if (map.over[t] >= 0) return false;
             if (k === GameMap.T_WATER) return dir > 0 && !map.sub[t];
             return k === GameMap.T_CLEAR || k === GameMap.T_TREES;
-        });
+        };
+    },
+
+    terraform(world, cx, cy, dir, exec) {
+        const map = world.map;
+        const plan = map.planTerraform(cx, cy, dir, Commands.terraformAllows(map, dir));
         if (!plan) return Commands.fail(dir > 0 ? 'Can\'t raise land here' : 'Can\'t lower land here');
         for (const t of plan.tiles) if (Commands.vehicleOn(world, t)) return Commands.fail('Vehicle in the way');
         const cost = world.price('terraform') * plan.corners.length;
@@ -849,7 +956,10 @@ const Commands = {
             case 0: around(10, 64); break;
             case 1: around(15, 112); break;
             case 2: around(20, 160); break;
-            case 3: town.roadWorks = 6; break;
+            case 3:
+                town.roadWorks = 6;
+                world.addNews('Traffic chaos in ' + town.name + '! Road rebuilding programme funded by ' + world.player.name + ' brings 6 months of misery to motorists!', { tile: town.xy, kind: 'general' });
+                break;
             case 4: {
                 town.statues[0] = true;
                 town.changeRating(0, 200, null, 1000);

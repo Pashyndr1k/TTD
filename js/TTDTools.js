@@ -2,7 +2,8 @@
 // pointer would do (tile outline, cost, catchment area) and applies it on click or at the end of a
 // drag through Commands (TTDCommands.js). TTD's autorail: drag along a row for straight track,
 // diagonally for diagonal track; a click lays the piece nearest the pointer (corner pieces near a
-// corner). Road: drag along a row, a click lays the half-tile toward the nearest edge.
+// corner). Road: TTD's two road tools, one per axis; a drag runs along the axis from the half tile
+// under the press to the half tile under the release (a click lays one half).
 
 /** @satisfies {Record<string, any>} */
 const Tools = {
@@ -61,30 +62,13 @@ const Tools = {
         return out;
     },
 
-    /** Road bits along a dragged line (or the half-tile toward the nearest edge for a click). */
-    roadPath(a, b) {
-        const dx = b.fx - a.fx, dy = b.fy - a.fy;
-        const out = [];
-        if (a.tx === b.tx && a.ty === b.ty && Math.hypot(dx, dy) < 0.5) {
-            const u = a.fx - a.tx, v = a.fy - a.ty;
-            const d = [[u, Dir.NE], [1 - u, Dir.SW], [v, Dir.NW], [1 - v, Dir.SE]].sort((p, q) => p[0] - q[0])[0][1];
-            out.push({ x: a.tx, y: a.ty, bits: 1 << d });
-            return out;
-        }
-        if (Math.abs(dx) >= Math.abs(dy)) {
-            const x0 = Math.min(a.tx, b.tx), x1 = Math.max(a.tx, b.tx);
-            for (let x = x0; x <= x1; x++) out.push({ x, y: a.ty, bits: (x > x0 || x0 === x1 ? 1 : 0) | (x < x1 || x0 === x1 ? 4 : 0) | (x0 === x1 ? 5 : 0) });
-        } else {
-            const y0 = Math.min(a.ty, b.ty), y1 = Math.max(a.ty, b.ty);
-            for (let y = y0; y <= y1; y++) out.push({ x: a.tx, y, bits: (y > y0 || y0 === y1 ? 8 : 0) | (y < y1 || y0 === y1 ? 2 : 0) | (y0 === y1 ? 10 : 0) });
-        }
-        // Inner tiles join both ways; ends join inward and also outward so they connect to what is there.
-        for (const p of out) if (!p.bits) p.bits = Math.abs(dx) >= Math.abs(dy) ? 5 : 10;
-        if (out.length > 1) {
-            const axisBits = Math.abs(dx) >= Math.abs(dy) ? 5 : 10;
-            out[0].bits = axisBits; out[out.length - 1].bits = axisBits;
-        }
-        return out;
+    /** Road drag of the road tool (TTD's two road tools, locked to axis 0 X or 1 Y): [{ t, bits }]. */
+    roadList(map, a, b, axis) { return Commands.roadDrag(map, a, b, axis); },
+
+    /** Tile rectangle covered by a road drag. */
+    roadRect(map, list) {
+        const xs = list.map(q => map.tx(q.t)), ys = list.map(q => map.ty(q.t));
+        return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
     },
 
     /** Rectangle of tiles between two picks. */
@@ -123,7 +107,7 @@ class Tool {
     label() {
         const o = this.opts;
         const names = {
-            rail: o.remove ? 'Remove track' : 'Build track (drag)', road: o.remove ? 'Remove road' : 'Build road (drag)',
+            rail: o.remove ? 'Remove track' : 'Build track (drag)', road: (o.remove ? 'Remove road ' : 'Build road ') + (o.axis ? '\\ (NW–SE)' : '/ (NE–SW)') + ' — drag',
             raildepot: 'Train depot', roaddepot: 'Road vehicle depot', shipdepot: 'Ship depot', station: 'Railway station',
             bus: 'Bus station', truck: 'Lorry station', signal: o.remove ? 'Remove signals' : 'Signals (click again to change)',
             bridge: 'Bridge (drag head to head)', tunnel: 'Tunnel (click a slope)', airport: 'Airport', dock: 'Dock',
@@ -148,14 +132,10 @@ class Tool {
                 return { rect: Tools.rect(s || p, p), ok, cost, text: path.length + ' piece(s)' };
             }
             case 'road': {
-                const path = Tools.roadPath(s || p, p);
-                let cost = 0, ok = true;
-                for (const q of path) {
-                    const tt = map.idx(q.x, q.y);
-                    const r = o.remove ? Commands.removeRoad(w, tt, q.bits, false) : Commands.buildRoad(w, tt, q.bits & ~(map.type[tt] === GameMap.T_ROAD ? map.road[tt] : 0) || q.bits, false);
-                    if (r.ok) cost += r.cost; else ok = false;
-                }
-                return { rect: Tools.rect(s || p, p), ok, cost };
+                const list = Tools.roadList(map, s || p, p, o.axis);
+                if (!list.length) return { rect: Tools.rect(p, p), ok: false, cost: 0 };
+                const r = o.remove ? Commands.removeLongRoad(w, list, false) : Commands.buildLongRoad(w, list, false);
+                return { rect: Tools.roadRect(map, list), ok: r.ok, cost: r.cost, text: r.ok ? '' : r.err };
             }
             case 'raildepot': case 'roaddepot': case 'shipdepot': {
                 const kind = this.name.replace('depot', '');
@@ -264,15 +244,11 @@ class Tool {
                 return;
             }
             case 'road': {
-                let first = null;
-                for (const q of Tools.roadPath(s || p, p)) {
-                    const tt = map.idx(q.x, q.y);
-                    const bits = o.remove ? q.bits : (q.bits & ~(map.type[tt] === GameMap.T_ROAD ? map.road[tt] : 0)) || q.bits;
-                    const r = Commands.run(w, ex => o.remove ? Commands.removeRoad(w, tt, bits, ex) : Commands.buildRoad(w, tt, bits, ex), true);
-                    if (!r.ok && !first && r.err !== 'Already built') first = r;
-                    if (r.ok) g.spent(r.cost, tt);
-                }
-                if (first) g.error(first.err);
+                const list = Tools.roadList(map, s || p, p, o.axis);
+                if (!list.length) return;
+                const r = Commands.run(w, ex => o.remove ? Commands.removeLongRoad(w, list, ex) : Commands.buildLongRoad(w, list, ex), true);
+                if (r.ok) g.spent(r.cost, list[list.length - 1].t);
+                else if (r.err !== 'Already built') g.error(r.err);
                 return;
             }
             case 'raildepot': case 'roaddepot': case 'shipdepot': {

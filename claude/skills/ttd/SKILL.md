@@ -16,9 +16,9 @@ formula and says what is implemented or left out.
 |---|---|
 | `TTDUtil.js` | `Rng` (seeded), `Dir` (TTD DiagDir 0 NE, 1 SE, 2 SW, 3 NW), `Calendar` (days since 1900), `Money` (pounds, shown in the chosen currency), `IMath` (clamp, distances, heap) |
 | `TTDData.js` | converted OpenTTD 0.5.3 tables: `CARGOS` per climate, `PRICES`, `BRIDGES`, `AIRPORTS`, `CATCHMENT`, `BREAKDOWN_CHANCE`, `ENGINES`, `INDUSTRIES`, `CREATE_TABLES`, `HOUSES`, `TOWN_NAMES` |
-| `TTDMap.js` | `GameMap`: corner heights, tile arrays (`type`, `ground`, `zone`, `rail`, `road`, `signals`, `obj`, `sub`, `town`, `over`, `wz` …), slopes and foundations, `pieceEdgeZ`, terraform planning, generation, dirty chunks, save |
+| `TTDMap.js` | `GameMap`: corner heights, tile arrays (`type`, `ground`, `zone`, `rail`, `road`, `signals`, `obj`, `sub`, `town`, `over`, `wz` …), slopes and foundations, `pieceEdgeZ`, TTD's road slope rules (`roadSlopeCheck`, `roadFoundation`, `roadEdgeZ`, `roadTop`), roadside and road works in `density`, terraform planning, generation, dirty chunks, save |
 | `TTDTrack.js` | `Track`: the six track pieces, trackdirs, piece geometry and heights, rail/road connectivity; `PathFinder.search` (A*) |
-| `TTDTown.js` | `Town`, `TownNames` (TTD English, Catalan), `Towns`: founding, grid road growth, houses, the house tile loop, monthly growth rate and ratings, `ACTIONS` |
+| `TTDTown.js` | `Town`, `TownNames` (TTD English, Catalan), `Towns`: founding, TTD's road growth walk (`grow`, `growAtRoad`, `growInTile`, `roadAllowedHere`), houses, the house tile loop, monthly growth rate and ratings, `ACTIONS` |
 | `TTDIndustry.js` | `Industry`, `Industries`: placement checks, production, delivery, monthly changes, closure, fields, lumber mill |
 | `TTDStation.js` | `Station`: parts, catchment, acceptance, cargo packets, TTD's rating |
 | `TTDCompany.js` | `Company`: money, loan, 13 finance categories, quarters, score parts |
@@ -62,7 +62,13 @@ formula and says what is implemented or left out.
    (`Models.vehicleKind`, industry id, house name).
 6. **HUD by id.** New windows are `Gui.v…()` views returning `{ title, text, info, rows, acts }`;
    the rows and buttons are copies of the `wr`/`wl`/`wb` templates in `UILayout.js` (skill `ui`).
-7. **Tunable numbers are `TTD_*` constants** in `Constants.js` with a row in the editor schema
+7. **Roads follow TTD's road_cmd.c.** Every road piece, the player's or a town's, goes through
+   `Commands.buildRoad` (town roads pass the town). Slopes, foundations and a road's end
+   heights come only from `GameMap.roadSlopeCheck` / `roadFoundation` / `roadEdgeZ`; the
+   renderer draws `roadTop`. The road tool builds a `Commands.roadDrag` list with
+   `buildLongRoad` (all or nothing) or `removeLongRoad`. On a road tile, `density` holds the
+   roadside (low 3 bits, `GameMap.RS_*`) and the road works counter (high 4 bits).
+8. **Tunable numbers are `TTD_*` constants** in `Constants.js` with a row in the editor schema
    (`ttd-world`, `ttd-newgame` groups); TTD's own tables stay in `TTDData.js`.
 
 ## Adding things
@@ -79,7 +85,8 @@ formula and says what is implemented or left out.
 ## Testing
 
 `node tools/check.mjs` runs `tests/ttd-sim.test.mjs`: TTD's payment example, map invariants,
-terraform, rating steps, a bus line, a railway, two trains on a signalled loop, save/load. New
+terraform, rating steps, a bus line, a railway, two trains on a signalled loop, save/load, and
+the road rules (slopes, drags, town road removal, crossings, depots, road works, town roads). New
 rules get a scenario there (`World.createEmpty` gives a flat map; `Towns.found` a town). Visual
 changes are checked in the browser pane (skill `verify`); `window.app.game` exposes the world,
 renderer and camera for scripted checks.

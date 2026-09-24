@@ -47,6 +47,9 @@ class World {
         this.tileLoopPos = 0;
         this.listeners = [];
         this.gameOver = false;
+        /** Scratch state of a town's growth walk (TTD's _grow_town_result, _generating_world). */
+        this.growResult = 0;
+        this.generatingTown = false;
         Station.world = this;
     }
 
@@ -71,6 +74,7 @@ class World {
             economy: typeof TTD_ECONOMY !== U ? TTD_ECONOMY : 1,
             disasters: typeof TTD_DISASTERS !== U ? TTD_DISASTERS : 1,
             townTolerance: typeof TTD_TOWN_TOLERANCE !== U ? TTD_TOWN_TOLERANCE : 2,
+            extraDynamite: typeof TTD_EXTRA_DYNAMITE !== U ? TTD_EXTRA_DYNAMITE : 1,
             currency: typeof TTD_CURRENCY !== U ? TTD_CURRENCY : 1,
             inflation: typeof TTD_INFLATION !== U ? TTD_INFLATION : 1,
             serviceTrain: typeof TTD_SERVICE_DAYS_TRAIN !== U ? TTD_SERVICE_DAYS_TRAIN : 150,
@@ -234,6 +238,7 @@ class World {
             const t = this.map.idx(this.rng.range(8, this.map.W - 9), this.rng.range(8, this.map.H - 9));
             if (Towns.found(this, t)) i++;
         }
+        this.settleRoadsides();
         if (progress) progress(55);
         Industries.generate(this);
         if (progress) progress(75);
@@ -377,11 +382,51 @@ class World {
         const map = this.map, k = map.type[t];
         if (k === GameMap.T_HOUSE) {
             Towns.tileLoop(this, t);
+        } else if (k === GameMap.T_ROAD) {
+            if (map.sub[t] !== GameMap.ROAD_SUB_DEPOT) this.roadTileLoop(t);
         } else if (k === GameMap.T_TREES) {
             if (this.rng.chance(1, 160)) this.spreadTree(t);
         } else if (k === GameMap.T_CLEAR) {
             // Rough land slowly returns to grass; neglected fields turn into grass far from farms.
             if (map.ground[t] === GameMap.G_ROUGH && this.rng.chance(1, 40)) { map.ground[t] = GameMap.G_GRASS; map.markDirty(t); }
+        }
+    }
+
+    /**
+     * TTD's TileLoop_Road: a town that funded road reconstruction digs up straight roads near it
+     * (closed to traffic for 15 tile loops); otherwise the roadside moves one step toward what
+     * the town zone wants — grass outside towns, pavement, street lights in the centre.
+     */
+    roadTileLoop(t) {
+        const map = this.map;
+        const works = map.roadWorks(t);
+        if (works) {
+            map.setRoadWorks(t, works >= 15 ? 0 : works + 1);
+            if (works >= 15) map.markDirty(t);
+            return;
+        }
+        const town = this.nearestTown(t);
+        const grp = town ? town.zoneOf(map, t) : 0;
+        if (town && town.roadWorks > 0 && map.sub[t] === 0 && (map.road[t] === GameMap.ROAD_X || map.road[t] === GameMap.ROAD_Y) &&
+            (IMath.manhattan(map.tx(t), map.ty(t), map.tx(town.xy), map.ty(town.xy)) < 8 || grp !== 0) &&
+            map.isFlat(t) && !Commands.vehicleOn(this, t) && this.rng.chance(1, 20)) {
+            map.setRoadWorks(t, 1);
+            map.markDirty(t);
+            return;
+        }
+        const want = World.ROADSIDE[grp], cur = map.roadside(t);
+        if (cur === want[0]) return;
+        map.setRoadside(t, cur === want[1] ? want[0] : cur === GameMap.RS_BARREN ? want[1] : GameMap.RS_BARREN);
+        map.markDirty(t);
+    }
+
+    /** Roadsides of all roads as the tile loop would settle them (a freshly generated map). */
+    settleRoadsides() {
+        const map = this.map;
+        for (let t = 0; t < map.size; t++) {
+            if (map.type[t] !== GameMap.T_ROAD || map.sub[t] === GameMap.ROAD_SUB_DEPOT) continue;
+            const town = this.nearestTown(t);
+            map.setRoadside(t, World.ROADSIDE[town ? town.zoneOf(map, t) : 0][0]);
         }
     }
 
@@ -560,6 +605,15 @@ class World {
         return w;
     }
 }
+
+/** TTD's _town_road_types by town zone (0 edge/outside … 4 centre): [wanted, the step before it]. */
+World.ROADSIDE = [
+    [GameMap.RS_GRASS, GameMap.RS_GRASS],
+    [GameMap.RS_PAVED, GameMap.RS_PAVED],
+    [GameMap.RS_PAVED, GameMap.RS_PAVED],
+    [GameMap.RS_TREES, GameMap.RS_TREES],
+    [GameMap.RS_LIGHTS, GameMap.RS_PAVED],
+];
 
 World.ENGINE = {};
 for (const e of TTDData.ENGINES) World.ENGINE[e.id] = e;

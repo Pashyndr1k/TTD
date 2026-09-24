@@ -10,6 +10,7 @@ const b64 = { btoa: s => Buffer.from(s, 'binary').toString('base64'), atob: s =>
 const page = loadScripts(SIM_FILES, { performance, ...b64 });
 const World = page.get('World'), GameMap = page.get('GameMap'), Commands = page.get('Commands'), Vehicles = page.get('Vehicles');
 const Towns = page.get('Towns'), Track = page.get('Track'), Company = page.get('Company'), Calendar = page.get('Calendar');
+const Town = page.get('Town');
 
 function flatWorld(opts) {
     const w = new World(Object.assign({ seed: 99, mapLog2: 6, climate: 0, startYear: 1950, towns: 0, industries: 0, inflation: 0, breakdowns: 0 }, opts || {}));
@@ -20,6 +21,8 @@ const idx = (w, x, y) => w.map.idx(x, y);
 const engineByName = (name) => page.get('TTDData').ENGINES.find(e => e.name === name);
 const run = (w, days) => { for (let i = 0; i < 74 * days; i++) w.tick(); };
 const must = (r) => { assert.ok(r.ok, r.err); return r; };
+/** Values made in the page's realm, as plain JSON (deepEqual across realms). */
+const plain = (x) => JSON.parse(JSON.stringify(x));
 
 test('оплата груза: формула TTD (уголь 100 т, 50 клеток, 8 периодов = £3582)', () => {
     const w = flatWorld();
@@ -65,23 +68,18 @@ test('рейтинг станции стартует с 175 и меняется 
 });
 
 /** Two towns 30 tiles apart on row 20 of a flat map. */
-function twoTowns(w) {
-    const a = Towns.found(w, idx(w, 12, 20), 18), b = Towns.found(w, idx(w, 44, 20), 18);
-    assert.ok(a && b, 'towns founded');
-    return [a, b];
-}
-
 test('автобусы между двумя городами возят пассажиров и зарабатывают', () => {
     const w = flatWorld();
-    twoTowns(w);
-    for (let x = 12; x <= 44; x++) {
-        const t = idx(w, x, 20);
-        if (w.map.type[t] === GameMap.T_ROAD && (w.map.road[t] & 5) === 5) continue;
-        must(Commands.run(w, ex => Commands.buildRoad(w, t, 5, ex), true));
-    }
-    must(Commands.run(w, ex => Commands.buildRoadStop(w, idx(w, 13, 20), 0, false, ex), true));   // next to each town centre
+    // The line first: one drag of road, stops, a depot led in by a half road. Towns founded next
+    // to it grow from this road, like TTD towns grow along any road near their centre.
+    const line = Commands.roadDrag(w.map, { fx: 8.2, fy: 20.5 }, { fx: 48.7, fy: 20.5 }, 0);
+    must(Commands.run(w, ex => Commands.buildLongRoad(w, line, ex), true));
+    must(Commands.run(w, ex => Commands.buildRoadStop(w, idx(w, 13, 20), 0, false, ex), true));
     must(Commands.run(w, ex => Commands.buildRoadStop(w, idx(w, 43, 20), 0, false, ex), true));
     must(Commands.run(w, ex => Commands.buildDepot(w, idx(w, 28, 21), 'road', 3, 0, ex), true));   // entrance NW
+    must(Commands.run(w, ex => Commands.buildRoad(w, idx(w, 28, 20), 2, ex), true));   // TTD: the road is led into the depot by hand
+    const a = Towns.found(w, idx(w, 12, 19), 18), b = Towns.found(w, idx(w, 44, 19), 18);
+    assert.ok(a && b && a.numHouses > 5 && b.numHouses > 5, 'towns founded and grown');
     const busE = engineByName('MPS Regal Bus');
     const buses = [];
     for (let i = 0; i < 2; i++) {
@@ -212,4 +210,130 @@ test('сохранение и загрузка: мир восстанавлив�
     run(w2, 10);
     assert.ok(w2.date > w.date);
     assert.equal(Calendar.format(Calendar.fromYMD(1941, 0, 1), true), '1st Jan 1941');
+});
+
+// --- Roads: TTD's construction rules ------------------------------------------------------------
+
+/** A flat world with corners (cx, cy) raised by one level (one terraform each). */
+function hillyWorld(corners) {
+    const w = flatWorld();
+    for (const [cx, cy] of corners) must(Commands.run(w, ex => Commands.terraform(w, cx, cy, 1, ex), true));
+    return w;
+}
+
+test('дороги на склонах: полудорога достраивается, фундаменты TTD, высоты концов', () => {
+    // (20,20): W raised; (30,20): an incline rising to SW; (40,20): three corners raised.
+    const w = hillyWorld([[21, 20], [31, 20], [31, 21], [41, 20], [41, 21], [40, 21]]);
+    const m = w.map, road = w.price('buildRoad'), found = w.price('terraform'), clear = w.price('clearGrass');
+    const oneCorner = idx(w, 20, 20), incline = idx(w, 30, 20), three = idx(w, 40, 20);
+    assert.equal(m.slope(oneCorner), GameMap.SLOPE_W);
+    assert.equal(m.inclineAxis(incline), 0);
+    // One corner raised: a half road becomes the whole straight road on an inclined foundation.
+    let r = must(Commands.run(w, ex => Commands.buildRoad(w, oneCorner, 1, ex), true));
+    assert.equal(m.road[oneCorner], GameMap.ROAD_X);
+    assert.equal(r.cost, 2 * road + found + clear);
+    assert.equal(m.roadFoundation(oneCorner, m.road[oneCorner]), 2);
+    assert.deepEqual([Track.roadEdgeZ(m, oneCorner, 0), Track.roadEdgeZ(m, oneCorner, 2)], [1, 2], 'NE end low, SW end high');
+    assert.equal(Commands.buildRoad(w, oneCorner, 2, false).err, 'Land sloped in wrong direction');
+    // Incline: straight along it without a foundation; a crossroads is refused, a T on the high side levels it.
+    r = must(Commands.run(w, ex => Commands.buildRoad(w, incline, 4, ex), true));
+    assert.equal(m.road[incline], GameMap.ROAD_X);
+    assert.equal(r.cost, 2 * road + clear);
+    assert.ok(!Commands.buildRoad(w, incline, GameMap.ROAD_Y, false).ok, 'no crossroads on an incline');
+    // Three corners raised: a levelled foundation takes any road, all ends at the top.
+    must(Commands.run(w, ex => Commands.buildRoad(w, three, GameMap.ROAD_ALL, ex), true));
+    for (let d = 0; d < 4; d++) assert.equal(Track.roadEdgeZ(m, three, d), 2);
+    // A straight road on a slope goes as a whole.
+    must(Commands.run(w, ex => Commands.removeRoad(w, incline, 1, ex), true));
+    assert.equal(m.type[incline], GameMap.T_CLEAR);
+});
+
+test('протяжка дороги: полуклетки под курсором, всё или ничего', () => {
+    const w = flatWorld(), m = w.map;
+    const list = Commands.roadDrag(m, { fx: 5.7, fy: 10.5 }, { fx: 7.2, fy: 10.5 }, 0);
+    assert.deepEqual(plain(list.map(q => [m.tx(q.t), q.bits])), [[5, 4], [6, 5], [7, 1]]);
+    must(Commands.run(w, ex => Commands.buildLongRoad(w, list, ex), true));
+    assert.deepEqual([5, 6, 7].map(x => m.road[idx(w, x, 10)]), [4, 5, 1]);
+    // A click lays the half toward the pointer.
+    assert.deepEqual(plain(Commands.roadDrag(m, { fx: 9.2, fy: 12.9 }, { fx: 9.2, fy: 12.9 }, 1).map(q => q.bits)), [2]);
+    // A station in the way stops the whole drag; nothing is built.
+    must(Commands.run(w, ex => Commands.buildRailStation(w, idx(w, 10, 40), 0, 1, 1, 0, ex), true));
+    const r = Commands.run(w, ex => Commands.buildLongRoad(w, Commands.roadDrag(m, { fx: 5.5, fy: 40.5 }, { fx: 15.5, fy: 40.5 }, 0), ex), true);
+    assert.ok(!r.ok);
+    assert.equal(m.type[idx(w, 5, 40)], GameMap.T_CLEAR);
+    // Pieces already there are free: dragging over the built road again costs nothing more.
+    const again = Commands.buildLongRoad(w, Commands.roadDrag(m, { fx: 5.1, fy: 10.5 }, { fx: 7.9, fy: 10.5 }, 0), false);
+    assert.equal(again.cost, 2 * w.price('buildRoad'));
+});
+
+test('городские дороги: середину убирает только "extra dynamite", рейтинг −50 / −18', () => {
+    const w = flatWorld(), m = w.map;
+    const town = new Town(0, idx(w, 30, 25), 'Testville');
+    w.towns.push(town);
+    for (let x = 28; x <= 32; x++) must(Commands.buildRoad(w, idx(w, x, 30), GameMap.ROAD_X, true, town));
+    assert.equal(m.roadOwner[idx(w, 30, 30)], GameMap.OWNER_TOWN);
+    w.settings.extraDynamite = 0;
+    assert.match(Commands.removeRoad(w, idx(w, 30, 30), GameMap.ROAD_X, false).err, /owned by Testville/);
+    const before = town.rating(0);
+    must(Commands.run(w, ex => Commands.removeRoad(w, idx(w, 32, 30), GameMap.ROAD_X, ex), true));
+    assert.equal(town.rating(0), before - 18, 'the end of a road');
+    w.settings.extraDynamite = 1;
+    must(Commands.run(w, ex => Commands.removeRoad(w, idx(w, 30, 30), GameMap.ROAD_X, ex), true));
+    assert.equal(town.rating(0), before - 18 - 50, 'the middle of a road');
+});
+
+test('переезд: дорога через рельсы, снос оставляет рельсы; депо на склоне — въездом к подъёму', () => {
+    const w = hillyWorld([[51, 20]]), m = w.map;
+    const t = idx(w, 10, 50);
+    must(Commands.run(w, ex => Commands.buildRail(w, t, Track.X, 0, ex), true));
+    const r = must(Commands.run(w, ex => Commands.buildRoad(w, t, 2, ex), true));
+    assert.equal(r.cost, 2 * w.price('buildRoad'));
+    assert.equal(m.sub[t], GameMap.ROAD_SUB_CROSSING);
+    assert.equal(m.road[t], GameMap.ROAD_Y, 'a crossing always takes the whole road');
+    must(Commands.run(w, ex => Commands.demolish(w, t, ex), true));
+    assert.equal(m.type[t], GameMap.T_RAIL);
+    assert.equal(m.rail[t], 1 << Track.X);
+    // (50,20) has its W corner raised: the entrance must face the SW or NW side.
+    assert.ok(!Commands.buildDepot(w, idx(w, 50, 20), 'road', 0, 0, false).ok);
+    assert.ok(Commands.buildDepot(w, idx(w, 50, 20), 'road', 2, 0, false).ok);
+});
+
+test('ремонт дорог: город, оплативший реконструкцию, закрывает участки на 15 циклов', () => {
+    const w = flatWorld(), m = w.map;
+    const town = new Town(0, idx(w, 30, 30), 'Testville');
+    w.towns.push(town);
+    for (let x = 27; x <= 33; x++) must(Commands.buildRoad(w, idx(w, x, 30), GameMap.ROAD_X, true, town));
+    const t = idx(w, 31, 30);
+    w.roadTileLoop(t);
+    assert.equal(m.roadside(t), GameMap.RS_GRASS, 'bare verges grass over');
+    town.roadWorks = 6;
+    for (let i = 0; i < 400 && !m.roadWorks(t); i++) w.roadTileLoop(t);
+    assert.ok(m.roadWorks(t) > 0, 'road works started');
+    assert.equal(Track.roadConnects(m, idx(w, 30, 30), 2), -1, 'closed to traffic');
+    for (let i = 0; i < 15; i++) w.roadTileLoop(t);
+    assert.equal(m.roadWorks(t), 0, 'finished');
+    assert.equal(Track.roadConnects(m, idx(w, 30, 30), 2), t);
+});
+
+test('города строят дороги по правилам TTD: без запрещённых склонов, с домами вдоль дорог', () => {
+    const w = new World({ seed: 77, mapLog2: 7, climate: 0, terrain: 3 });
+    w.generate();
+    const m = w.map;
+    let roads = 0;
+    for (let t = 0; t < m.size; t++) {
+        if (m.type[t] !== GameMap.T_ROAD || m.sub[t] !== 0) continue;
+        roads++;
+        assert.ok(m.roadFoundation(t, m.road[t]) >= 0, 'road bits allowed on the slope of ' + m.tx(t) + ',' + m.ty(t));
+    }
+    assert.ok(roads > w.towns.length * 3, 'towns have roads');
+    // Every house stands next to a road or another house of its town.
+    for (let t = 0; t < m.size; t++) {
+        if (m.type[t] !== GameMap.T_HOUSE || m.obj[t] !== t) continue;
+        let near = false;
+        for (let d = 0; d < 4; d++) {
+            const n = m.neighbour(t, d);
+            if (n >= 0 && (m.type[n] === GameMap.T_ROAD || m.type[n] === GameMap.T_HOUSE || m.type[n] === GameMap.T_STATION)) near = true;
+        }
+        assert.ok(near, 'house by a road');
+    }
 });

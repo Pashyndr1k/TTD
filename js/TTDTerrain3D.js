@@ -28,7 +28,7 @@ class TTDTerrain3D {
         this._buildWater();
         /** Tile -> atlas cell override for the ground under built things (set by TTDRender3D). */
         this.groundCell = null;
-        /** Tile -> foundation top height (levels) or -1 (set by TTDRender3D). */
+        /** Tile -> heights of the foundation top's corners [N, W, S, E], or null (set by TTDRender3D). */
         this.foundationOf = null;
     }
 
@@ -239,27 +239,28 @@ class TTDTerrain3D {
         const c = m.corners(t);   // N W S E
         const cell = this.cellOf(t);
         const [u0, v0, du] = this._uv(t, cell);
-        const found = this.foundationOf ? this.foundationOf(t) : -1;
+        const top = this.foundationOf ? this.foundationOf(t) : null;
         const shade = 0.94 + (((m.tx(t) * 73856093) ^ (m.ty(t) * 19349663)) & 15) / 250;
         const col = [shade, shade, shade];
         const sea = m.type[t] === GameMap.T_WATER ? -0.6 : 0;
-        if (found >= 0) {
-            // Flat top at the foundation height, walls of cliff down to the natural ground.
-            const z = found * L;
-            const P = [[x, z, y], [x + T, z, y], [x + T, z, y + T], [x, z, y + T]];
+        if (top) {
+            // The foundation's top (flat, or an incline for a road on an inclined foundation) and
+            // walls of cliff down to the natural ground. Corners: N, W, S, E.
+            const z = top.map(h => h * L);
+            const P = [[x, z[0], y], [x + T, z[1], y], [x + T, z[2], y + T], [x, z[3], y + T]];
             const U = [[u0, v0], [u0 + du, v0], [u0 + du, v0 + du], [u0, v0 + du]];
             b.quad(P, U, col, [0, 1, 0]);
             const [cu, cv, cd] = this._uv(t, TTDTerrain3D.A.CLIFF);
-            const wall = (ax, ay, ha, bx, by, hb, n) => {
-                if (ha * L >= z && hb * L >= z) return;
+            const wall = (ax, ay, ha, za, bx, by, hb, zb, n) => {
+                if (ha * L >= za && hb * L >= zb) return;
                 const wc = [col[0] * 0.8, col[1] * 0.8, col[2] * 0.8];
-                b.quad([[ax, ha * L, ay], [bx, hb * L, by], [bx, z, by], [ax, z, ay]],
+                b.quad([[ax, ha * L, ay], [bx, hb * L, by], [bx, zb, by], [ax, za, ay]],
                     [[cu, cv + cd], [cu + cd, cv + cd], [cu + cd, cv], [cu, cv]], wc, n);
             };
-            wall(x, y, c[0], x, y + T, c[3], [-1, 0, 0]);             // NE side (x)
-            wall(x, y + T, c[3], x + T, y + T, c[2], [0, 0, 1]);      // SE side
-            wall(x + T, y + T, c[2], x + T, y, c[1], [1, 0, 0]);      // SW side
-            wall(x + T, y, c[1], x, y, c[0], [0, 0, -1]);             // NW side
+            wall(x, y, c[0], z[0], x, y + T, c[3], z[3], [-1, 0, 0]);             // NE side (x)
+            wall(x, y + T, c[3], z[3], x + T, y + T, c[2], z[2], [0, 0, 1]);      // SE side
+            wall(x + T, y + T, c[2], z[2], x + T, y, c[1], z[1], [1, 0, 0]);      // SW side
+            wall(x + T, y, c[1], z[1], x, y, c[0], z[0], [0, 0, -1]);             // NW side
             return;
         }
         const pN = [x, c[0] * L + sea * L, y], pW = [x + T, c[1] * L + sea * L, y];

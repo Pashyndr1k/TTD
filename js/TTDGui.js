@@ -119,7 +119,8 @@ class Gui {
                 [railNames[rt], () => { g.railType = (g.railType + 1) % 4; if (g.tool) g.tool.opts.railType = g.railType; this.renderBar(); }],
             ];
             case 'road': return [
-                [on('road') + 'Road', () => g.setTool('road')],
+                [(t && t.name === 'road' && t.opts.axis === 0 ? '• ' : '') + 'Road /', () => t && t.name === 'road' && t.opts.axis === 0 ? g.setTool(null) : g.setTool('road', { axis: 0 })],
+                [(t && t.name === 'road' && t.opts.axis === 1 ? '• ' : '') + 'Road \\', () => t && t.name === 'road' && t.opts.axis === 1 ? g.setTool(null) : g.setTool('road', { axis: 1 })],
                 [on('roaddepot') + 'Depot', () => g.setTool('roaddepot')],
                 [on('bus') + 'Bus stop', () => g.setTool('bus')],
                 [on('truck') + 'Lorry stop', () => g.setTool('truck')],
@@ -607,6 +608,9 @@ class Gui {
                 '4. In the train window: Go To…, click station A, Go To…,',
                 '   click station B, then Start.',
                 'Road vehicles: road + bus/lorry stops + road depot.',
+                'Roads: "Road /" and "Road \\" each build along one direction;',
+                '   drag from half tile to half tile, a click builds a half.',
+                '   Lead a half road into a depot entrance.',
                 'Income: distance x amount x cargo rate, less for slow delivery.',
                 'Signals split the line into blocks: one train per block.',
                 'Sub-tropical towns in the desert need food and water to grow.',

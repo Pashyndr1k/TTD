@@ -57,6 +57,11 @@ build.bat          # or: node tools/build.mjs          -> dist/*.zip
   4. Click the depot → New vehicles → buy an engine, then add wagons.
   5. In the train window: Go To… → click station A, Go To… → click station B, then Start.
 - **Road services:** road + bus or lorry stops + a road depot.
+  - Roads work like TTD's: one tool per direction ("Road /" and "Road \\"). Drag from the half
+    tile you press to the half tile you release; a click builds a half.
+  - A drag is built whole or not at all. On slopes the road gets TTD's foundations.
+  - Lead a half road into a depot's entrance; depots don't join the road by themselves.
+  - Towns grow their own roads the TTD way, along your roads too.
 - **Ships:** a dock and a ship depot on the sea.
 - **Aircraft:** buy them in an airport's hangar.
 - **Signals** split track into blocks, one train per block. Click a signal again to make it one-way.

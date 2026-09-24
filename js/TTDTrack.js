@@ -127,8 +127,16 @@ const Track = {
         return 0;
     },
 
-    /** Height of a road end at edge d: a straight road along an incline follows it. */
+    /**
+     * Height of a road end at edge d. Plain road: TTD's foundations (GameMap.roadEdgeZ); a depot
+     * sits on a levelled foundation; stops and bridge heads: a straight road along an incline
+     * follows it.
+     */
     roadEdgeZ(map, t, d) {
+        if (map.type[t] === GameMap.T_ROAD) {
+            if (map.sub[t] === 0) return map.roadEdgeZ(t, d);
+            if (map.sub[t] === GameMap.ROAD_SUB_DEPOT) return map.buildZ(t);
+        }
         const bits = map.road[t];
         const straight = bits === 5 || bits === 10 || bits === 1 || bits === 4 || bits === 2 || bits === 8;
         const axis = straight ? (bits & 5 ? 0 : 1) : -1;
@@ -143,6 +151,7 @@ const Track = {
         const from = Dir.reverse(d);
         if (!(Track.roadBits(map, n) & (1 << from))) return -1;
         if (Track.roadEdgeZ(map, t, d) !== Track.roadEdgeZ(map, n, from)) return -1;
+        if (map.roadWorks(n)) return -1;   // TTD: a tile under road works is closed to traffic
         return n;
     },
 

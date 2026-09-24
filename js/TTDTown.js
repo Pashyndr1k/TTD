@@ -78,7 +78,6 @@ class Town {
         this.mailMax = 0; this.mailAct = 0; this.lastMailMax = 0; this.lastMailAct = 0;
         this.food = 0; this.water = 0; this.lastFood = 0; this.lastWater = 0;
         this.goods = 0; this.lastGoods = 0;
-        this.layout = 3;            // road grid spacing
     }
 
     rating(company) { return this.ratings[company] != null ? this.ratings[company] : Town.RATING_INITIAL; }
@@ -175,12 +174,16 @@ const Towns = {
         let name = TownNames.make(world.settings.townNames, seed);
         for (let k = 0; k < 20 && world.towns.some(o => o.name === name); k++) name = TownNames.make(world.settings.townNames, world.rng.next());
         const town = new Town(id, t, name);
-        town.layout = world.rng.chance(1, 2) ? 3 : 4;
         world.towns.push(town);
-        // Centre crossroads.
-        Towns.buildRoad(world, town, t, 15);
-        const target = size || world.rng.range(8, 23);
-        for (let i = 0; i < target * 4 && town.numHouses < target * 2; i++) Towns.grow(world, town, true);
+        // TTD's DoCreateTown: pretend to have x more houses (a bigger radius), grow 4x times.
+        const x = size || (world.rng.int(16) + 8);
+        town.numHouses += x;
+        town.updateRadius();
+        world.generatingTown = true;
+        for (let i = 0; i < x * 4; i++) Towns.grow(world, town, true);
+        world.generatingTown = false;
+        town.numHouses -= x;
+        town.updateRadius();
         town.growthRate = 250;
         return town;
     },
@@ -199,97 +202,192 @@ const Towns = {
         return land >= 40;
     },
 
-    /** Put town road bits on a tile (merging with what is there). Returns false if impossible. */
-    buildRoad(world, town, t, bits) {
-        const map = world.map;
-        const k = map.type[t];
-        if (k === GameMap.T_ROAD && map.sub[t] === 0) {
-            map.road[t] |= bits;
-            map.markDirty(t);
-            return true;
-        }
-        if (!map.isClearable(t) || map.slope(t) & GameMap.SLOPE_STEEP) return false;
-        if (map.ground[t] === GameMap.G_FIELDS) return false;
-        map.setClear(t, map.ground[t] === GameMap.G_DESERT ? GameMap.G_DESERT : GameMap.G_GRASS);
-        map.type[t] = GameMap.T_ROAD;
-        map.road[t] = bits;
-        map.roadOwner[t] = GameMap.OWNER_TOWN;
-        map.owner[t] = GameMap.OWNER_TOWN;
-        map.town[t] = town.id;
-        map.markDirty(t);
+    // --- Road growth: a port of TTD's GrowTown / GrowTownAtRoad / GrowTownInTile ---------------
+    //
+    // A town looks for a road near its centre and walks along it at random. On the way it may
+    // extend a road by half a tile, start a new road block on a roadless tile (straight on, or
+    // turning with chance 1/4), or put a house beside the road (60 %). Roads are built with the
+    // player's road rules (Commands.buildRoad as the town), so they obey the same slopes and
+    // foundations; the town levels sloped land first when it can.
+
+    /** Road bits of a tile as the town sees them (TTD's GetTownRoadMask: half pieces don't count). */
+    roadMask(map, t) {
+        if (t < 0) return 0;
+        const bits = Track.roadBits(map, t);
+        return (bits & (bits - 1)) ? bits : 0;
+    },
+
+    /** Would TTD's CMD_LANDSCAPE_CLEAR with DC_AUTO succeed here? */
+    autoClearable(map, t) {
+        if (map.isClearable(t)) return true;
+        const b = map.road[t];
+        return map.type[t] === GameMap.T_ROAD && map.sub[t] === 0 && b !== 0 && (b & (b - 1)) === 0;
+    },
+
+    /** TTD's TerraformTownTile: move the corners in `mask` (slope bits) of tile t, if cheap enough. */
+    terraformTile(world, t, mask, dir) {
+        const map = world.map, x = map.tx(t), y = map.ty(t);
+        const list = [];
+        if (mask & GameMap.SLOPE_N) list.push([x, y]);
+        if (mask & GameMap.SLOPE_W) list.push([x + 1, y]);
+        if (mask & GameMap.SLOPE_S) list.push([x + 1, y + 1]);
+        if (mask & GameMap.SLOPE_E) list.push([x, y + 1]);
+        if (!list.length) return false;
+        const plan = map.planTerraformCorners(list, dir, Commands.terraformAllows(map, dir));
+        // TTD: a town gives up if the job costs 126 * 16 or more (in base prices).
+        if (!plan || plan.corners.length * TTDData.PRICES.terraform >= 126 * 16) return false;
+        for (const p of plan.tiles) if (Commands.vehicleOn(world, p)) return false;
+        map.applyTerraform(plan);
         return true;
     },
 
-    /** Is tile t on this town's road grid lines? */
-    onGrid(map, town, t) {
-        const dx = map.tx(t) - map.tx(town.xy), dy = map.ty(t) - map.ty(town.xy), g = town.layout;
-        return ((dx % g) + g) % g === 0 || ((dy % g) + g) % g === 0;
+    /** TTD's LevelTownLand: raise the low corners of a sloped tile, or else lower the high ones. */
+    levelLand(world, t) {
+        const map = world.map;
+        if (map.type[t] === GameMap.T_HOUSE || map.isFlat(t)) return;
+        const s = map.slope(t) & 15;
+        if (!Towns.terraformTile(world, t, ~s & 15, 1)) Towns.terraformTile(world, t, s, -1);
+    },
+
+    /** Is t open water (TTD's IsClearWaterTile)? */
+    clearWater(map, t) { return t >= 0 && map.type[t] === GameMap.T_WATER && !map.sub[t] && map.isFlat(t); },
+
+    /** TTD's IsRoadAllowedHere: may the town lead a road into tile t going in direction dir? */
+    roadAllowedHere(world, town, t, dir) {
+        const map = world.map;
+        if (t < 0 || !map.valid(map.tx(t), map.ty(t))) return false;
+        if (!Towns.roadMask(map, t)) {
+            const bits = Dir.axis(dir) === 0 ? GameMap.ROAD_X : GameMap.ROAD_Y;
+            if (!Commands.buildRoad(world, t, bits, false, town).ok && !Towns.autoClearable(map, t)) return false;
+        }
+        const s = map.slope(t);
+        if (s !== 0) {
+            // Only an incline along the road will do; sometimes the town levels the land instead.
+            if (map.inclineAxis(t) === Dir.axis(dir) && !(s & GameMap.SLOPE_STEEP)) return true;
+            const r = world.rng.next() & 0xffff;
+            if (r > 8192 || world.generatingTown) return false;
+            const done = r <= 4096 ? Towns.terraformTile(world, t, s & 15, -1) : Towns.terraformTile(world, t, ~s & 15, 1);
+            if (done) return false;
+            // The terraform failed: consider building on the slope anyway (falls through).
+        }
+        // No parallel road right beside this one.
+        const n = (x, d) => x < 0 ? -1 : map.neighbour(x, d);
+        const l = (dir + 1) & 3, r = (dir + 3) & 3, back = dir ^ 2;
+        if (Towns.roadMask(map, n(t, l)) & (1 << back)) return false;
+        if (Towns.roadMask(map, n(t, r)) & (1 << back)) return false;
+        if (Towns.roadMask(map, n(n(t, l), back)) & (1 << dir)) return false;
+        if (Towns.roadMask(map, n(n(t, r), back)) & (1 << dir)) return false;
+        return true;
     },
 
     /**
-     * One growth attempt (TTD's GrowTown): pick a town road tile near the centre, look at a random
-     * neighbour: extend a road along the grid or put a house next to the road.
+     * TTD's GrowTownInTile: one step of the walk on tile t (mask — its road bits, block — the
+     * direction the walk came in by, -1 at the start). Sets world.growResult: 0 — stop after this
+     * step, -1 — something was built. Returns the tile the walk continues from.
      */
+    growInTile(world, town, t, mask, block) {
+        const map = world.map, rng = world.rng;
+        let rcmd;
+        if (!mask) {
+            // No road here: this is the last step.
+            world.growResult = 0;
+            Towns.levelLand(world, t);
+            if (!Towns.roadAllowedHere(world, town, t, block)) return t;
+            let a = block;
+            const b = block ^ 2;
+            if (rng.chance(1, 4)) { do a = rng.int(4); while (a === b); }
+            if (!Towns.roadAllowedHere(world, town, map.neighbour(t, a), a)) {
+                // The road can't go on: only a straight piece between houses is kept.
+                if (a !== block) return t;
+                const h1 = map.neighbour(t, (a + 1) & 3), h2 = map.neighbour(t, (a + 3) & 3);
+                if (!(h1 >= 0 && map.type[h1] === GameMap.T_HOUSE) && !(h2 >= 0 && map.type[h2] === GameMap.T_HOUSE)) return t;
+            }
+            rcmd = (1 << a) | (1 << b);
+        } else if (block >= 0 && !(mask & (1 << (block ^ 2)))) {
+            // Came in over a half road: complete it.
+            world.growResult = 0;
+            rcmd = 1 << (block ^ 2);
+        } else {
+            if (map.type[t] === GameMap.T_TUNBRIDGE) {
+                // Through a road tunnel to its other end; any other bridge or tunnel ends the walk.
+                const wh = world.wormholes[map.obj[t]];
+                if (wh && wh.kind === 'tunnel' && !wh.rail) return wh.a === t ? wh.b : wh.a;
+                return t;
+            }
+            const i = rng.int(4);
+            if (mask & (1 << i)) return t;
+            const tmp = map.neighbour(t, i);
+            if (tmp < 0 || Towns.clearWater(map, tmp)) return t;
+            // A house at the road side (60 %, or always where no road may go).
+            if (!Towns.roadAllowedHere(world, town, tmp, i) || rng.chance(6, 10)) {
+                if (map.type[tmp] !== GameMap.T_HOUSE) {
+                    Towns.levelLand(world, tmp);
+                    if (Towns.buildHouse(world, town, tmp, !!world.generatingTown)) world.growResult = -1;
+                }
+                return t;
+            }
+            world.growResult = 0;
+            rcmd = 1 << i;
+        }
+        if (Towns.clearWater(map, t)) return t;
+        if (Commands.buildRoad(world, t, rcmd, true, town).ok) world.growResult = -1;
+        return t;
+    },
+
+    /** TTD's GrowTownAtRoad: walk the road network from tile t. True if something was built. */
+    growAtRoad(world, town, t) {
+        const map = world.map, rng = world.rng;
+        let block = -1;
+        world.growResult = 10 + ((town.numHouses * 4 / 9) | 0);
+        do {
+            let mask = Towns.roadMask(map, t);
+            t = Towns.growInTile(world, town, t, mask, block);
+            if (block >= 0) mask &= ~(1 << (block ^ 2));
+            if (!mask) return world.growResult === -1;
+            do block = rng.int(4); while (!(mask & (1 << block)));
+            const n = map.neighbour(t, block);
+            if (n < 0 || !map.valid(map.tx(n), map.ty(n))) return world.growResult === -1;
+            t = n;
+            // Don't build on another town's roads.
+            if (map.type[t] === GameMap.T_ROAD && map.roadOwner[t] === GameMap.OWNER_TOWN && map.town[t] !== town.id) world.growResult = -1;
+        } while (--world.growResult >= 0);
+        return world.growResult === -2;
+    },
+
+    /** TTD's GrowTown: grow from the first road near the centre, or start one. */
     grow(world, town, generating) {
         const map = world.map, rng = world.rng;
-        const cx = map.tx(town.xy), cy = map.ty(town.xy);
-        const reach = 2 + Math.floor(Math.sqrt(town.numHouses + 4) * 1.6);
-        // The town's own road tiles near the centre are where it grows from.
-        const roads = [];
-        for (let y = Math.max(1, cy - reach); y <= Math.min(map.H - 2, cy + reach); y++) {
-            for (let x = Math.max(1, cx - reach); x <= Math.min(map.W - 2, cx + reach); x++) {
-                const t = y * map.W + x;
-                if (map.type[t] === GameMap.T_ROAD && map.town[t] === town.id && map.sub[t] === 0) roads.push(t);
+        const was = world.generatingTown;
+        if (generating) world.generatingTown = true;
+        try {
+            let x = map.tx(town.xy), y = map.ty(town.xy);
+            for (const [dx, dy] of Towns.SPIRAL) {
+                const t = map.inside(x, y) ? map.idx(x, y) : -1;
+                if (t >= 0 && Towns.roadMask(map, t)) return Towns.growAtRoad(world, town, t);
+                x += dx; y += dy;
             }
-        }
-        if (!roads.length) return false;
-        for (let attempt = 0; attempt < 16; attempt++) {
-            const t = rng.pick(roads);
-            const x = map.tx(t), y = map.ty(t);
-            const d = rng.int(4);
-            const nx = x + Dir.DX[d], ny = y + Dir.DY[d];
-            if (!map.valid(nx, ny)) continue;
-            const n = map.idx(nx, ny);
-            if (map.over[n] >= 0) continue;
-            if (map.type[n] === GameMap.T_ROAD) {
-                // Join neighbouring town roads so blocks close up.
-                if (map.town[n] === town.id && map.sub[n] === 0 &&
-                    Towns.onGrid(map, town, t) && Towns.onGrid(map, town, n)) {
-                    const a = 1 << d, b = 1 << Dir.reverse(d);
-                    if (!(map.road[t] & a)) {
-                        const ra = map.road[t], rb = map.road[n];
-                        map.road[t] |= a; map.road[n] |= b;
-                        if (Track.roadEdgeZ(map, t, d) !== Track.roadEdgeZ(map, n, Dir.reverse(d))) { map.road[t] = ra; map.road[n] = rb; continue; }
-                        map.markDirty(t); map.markDirty(n);
-                        return true;
-                    }
+            // No road yet: a random road block on the first flat clearable tile.
+            x = map.tx(town.xy); y = map.ty(town.xy);
+            for (const [dx, dy] of Towns.SPIRAL) {
+                const t = map.inside(x, y) ? map.idx(x, y) : -1;
+                if (t >= 0 && map.type[t] !== GameMap.T_HOUSE && map.isFlat(t) && Towns.autoClearable(map, t)) {
+                    const r = rng.next();
+                    const a = r & 3;
+                    let b = (r >>> 8) & 3;
+                    if (a === b) b ^= 2;
+                    Commands.buildRoad(world, t, (1 << a) | (1 << b), true, town);
+                    return true;
                 }
-                continue;
+                x += dx; y += dy;
             }
-            if (!map.isClearable(n)) continue;
-            if (Towns.onGrid(map, town, n) && (map.road[t] & (1 << d) || Towns.onGrid(map, town, t))) {
-                // Extend the grid road; it must meet at equal heights.
-                if (map.slope(n) & GameMap.SLOPE_STEEP) continue;
-                const a = 1 << d, b = 1 << Dir.reverse(d);
-                const before = map.road[t];
-                const ground = map.ground[n], type = map.type[n], trees = map.treeCount[n], ttype = map.treeType[n];
-                map.road[t] |= a;
-                if (!Towns.buildRoad(world, town, n, b)) { map.road[t] = before; continue; }
-                if (Track.roadEdgeZ(map, t, d) !== Track.roadEdgeZ(map, n, Dir.reverse(d))) {
-                    // Heights do not meet: undo.
-                    map.road[t] = before;
-                    map.setClear(n, ground);
-                    if (type === GameMap.T_TREES) { map.type[n] = type; map.treeCount[n] = trees; map.treeType[n] = ttype; }
-                    continue;
-                }
-                map.markDirty(t);
-                return true;
-            }
-            if (Towns.onGrid(map, town, n)) continue;
-            if (Towns.buildHouse(world, town, n, generating)) return true;
+            return false;
+        } finally {
+            world.generatingTown = was;
         }
-        return false;
     },
+
+    /** TTD's _town_coord_mod: the walk around the centre where a town looks for its road. */
+    SPIRAL: [[-1, 0], [1, 1], [1, -1], [-1, -1], [-1, 0], [0, 2], [2, 0], [0, -2], [-1, -1], [-2, 2], [2, 2], [2, -2], [0, 0]],
 
     /** Pick and build a house on tile t (TTD's DoBuildTownHouse). */
     buildHouse(world, town, t, generating) {
@@ -307,14 +405,14 @@ const Towns = {
             if ((h.name === 'Church' && town.hasChurch) || (h.name === 'Stadium' && town.hasStadium)) continue;
             if ((h.extra & 0x12) && !map.isFlat(t)) continue;
             const parts = Towns.houseParts(h.id);
-            // Multi-tile: all tiles clearable, same build height, not on the grid.
+            // Multi-tile: all tiles clearable, same build height.
             const z = map.buildZ(t);
             let ok = true;
             for (const [dx, dy] of parts) {
                 const x = map.tx(t) + dx, y = map.ty(t) + dy;
                 if (!map.valid(x, y)) { ok = false; break; }
                 const p = map.idx(x, y);
-                if (!map.isClearable(p) || map.buildZ(p) !== z || Towns.onGrid(map, town, p) || (map.slope(p) & GameMap.SLOPE_STEEP)) { ok = false; break; }
+                if (!map.isClearable(p) || map.buildZ(p) !== z || (map.slope(p) & GameMap.SLOPE_STEEP)) { ok = false; break; }
             }
             if (!ok) continue;
             const stage = generating ? (rng.chance(1, 7) ? rng.int(3) : 3) : 0;
@@ -395,11 +493,10 @@ const Towns = {
         }
     },
 
-    /** Town tick (every 70 game ticks): count down to the next growth attempt. */
+    /** Town tick (every 70 game ticks): count down to the next growth; a failed one retries next tick. */
     tick(world, town) {
         if (town.growCounter > 0) { town.growCounter--; return; }
-        town.growCounter = town.growthRate;
-        Towns.grow(world, town, false);
+        town.growCounter = Towns.grow(world, town, false) ? town.growthRate : 0;
     },
 
     /** Monthly (TTD's UpdateTownGrowRate / UpdateTownRating / UpdateTownAmounts). */

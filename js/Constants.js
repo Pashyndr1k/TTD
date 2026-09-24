@@ -94,6 +94,7 @@ const TTD_SUBSIDY_MULT = 0;             // subsidy multiplier: 0 x1.5, 1 x2, 2 x
 const TTD_ECONOMY = 1;                  // 0 steady, 1 variable (industry production swings, closures)
 const TTD_DISASTERS = 1;                // 0 off, 1 on
 const TTD_TOWN_TOLERANCE = 2;           // town council attitude: 0 permissive, 1 tolerant, 2 hostile
+const TTD_EXTRA_DYNAMITE = 1;           // 1 — town roads may be cut in the middle, not only at their ends (extra_dynamite)
 const TTD_CURRENCY = 1;                 // 0 pounds, 1 dollars (x2), 2 euro (x2), 3 roubles (x50)
 const TTD_TOWN_NAMES = 1;               // 0 English, 1 Catalan (town_name = catalan)
 const TTD_INFLATION = 1;                // 0 off, 1 on: prices and payments rise each month

@@ -87,6 +87,11 @@ class TTDRender3D {
             case GameMap.T_RAIL: case GameMap.T_ROAD: case GameMap.T_TUNBRIDGE:
                 if (m.sub[t] === GameMap.RAIL_SUB_DEPOT && k === GameMap.T_RAIL) return A.PAVED;
                 if (k === GameMap.T_ROAD && m.sub[t] === GameMap.ROAD_SUB_DEPOT) return A.PAVED;
+                if (k === GameMap.T_ROAD && !desert) {
+                    const rs = m.roadside(t);
+                    if (rs === GameMap.RS_BARREN) return A.DIRT;
+                    if (rs === GameMap.RS_PAVED || rs === GameMap.RS_LIGHTS) return A.PAVED;
+                }
                 return desert ? A.DESERT : m.zone[t] === GameMap.Z_RAINFOREST ? A.RAINFOREST : A.GRASS;
             case GameMap.T_STATION:
                 return m.sub[t] === GameMap.ST_AIRPORT ? A.GRASS : m.sub[t] === GameMap.ST_DOCK ? A.PAVED : A.CONCRETE;
@@ -107,8 +112,20 @@ class TTDRender3D {
         return -1;
     }
 
-    /** Foundation top (levels) under built things on slopes, -1 — none. */
+    /**
+     * Foundation under built things on slopes: the heights (levels) of its top's corners
+     * [N, W, S, E] — all equal for a levelled one, an incline for a road on an inclined
+     * foundation — or null: nothing, or the thing lies on the natural ground.
+     */
     foundationOf(t) {
+        const m = this.map;
+        if (m.type[t] === GameMap.T_ROAD && m.sub[t] === 0) return m.roadTop(t);
+        const z = this.levelFoundation(t);
+        return z < 0 ? null : [z, z, z, z];
+    }
+
+    /** Levelled foundation top (levels) under built things other than plain road, -1 — none. */
+    levelFoundation(t) {
         const m = this.map, k = m.type[t];
         if (k === GameMap.T_CLEAR || k === GameMap.T_TREES || k === GameMap.T_WATER || k === GameMap.T_TUNBRIDGE) return -1;
         if (k === GameMap.T_INDUSTRY) {
@@ -121,11 +138,6 @@ class TTDRender3D {
         if (k === GameMap.T_RAIL && m.sub[t] === 0) {
             const bits = m.rail[t];
             if (incl >= 0 && bits === (1 << Track.axisTrack(incl))) return -1;
-            return m.tileMaxZ(t);
-        }
-        if (k === GameMap.T_ROAD && m.sub[t] === 0) {
-            const mask = incl === 0 ? 5 : incl === 1 ? 10 : 0;
-            if (incl >= 0 && (m.road[t] & ~mask) === 0) return -1;
             return m.tileMaxZ(t);
         }
         if (k === GameMap.T_STATION && (m.sub[t] === GameMap.ST_BUS || m.sub[t] === GameMap.ST_TRUCK) && incl >= 0) return -1;
@@ -145,7 +157,7 @@ class TTDRender3D {
             return zo + (zi - zo) * IMath.clamp(f, 0, 1);
         }
         const f = this.foundationOf(t);
-        if (f >= 0) return f;
+        if (f) return f[0] * (1 - u) * (1 - v) + f[1] * u * (1 - v) + f[2] * u * v + f[3] * (1 - u) * v;
         if (m.isFlat(t)) return m.tileMinZ(t);
         return m.groundZ(m.tx(t) + u, m.ty(t) + v);
     }
@@ -227,12 +239,19 @@ class TTDRender3D {
                 if (m.sub[t] === GameMap.ROAD_SUB_DEPOT) {
                     const d = w.depots[m.obj[t]];
                     if (d) {
-                        Models.roadTile(b, m.road[t], ox, oy, zAt, false);
+                        Models.roadTile(b, m.road[t], ox, oy, zAt, GameMap.RS_GRASS, false);
                         Models.depot(b, d.dir, ox, oy, this.surfaceZ(t, 0.5, 0.5) * L, 'road');
                     }
                     return;
                 }
-                Models.roadTile(b, m.road[t], ox, oy, zAt, m.roadOwner[t] === GameMap.OWNER_TOWN);
+                const rs = m.roadside(t);
+                Models.roadTile(b, m.road[t], ox, oy, zAt, rs, m.roadWorks(t) > 0);
+                if (rs === GameMap.RS_TREES && m.sub[t] === 0) {
+                    // Roadside trees: small ones in the verges beside the road.
+                    const bits = m.road[t];
+                    const spots = bits === GameMap.ROAD_X ? [[0.3, 0.1], [0.75, 0.9]] : bits === GameMap.ROAD_Y ? [[0.1, 0.3], [0.9, 0.75]] : [[0.1, 0.1], [0.9, 0.9]];
+                    for (const [u, v] of spots) trees.push({ kind: GameMap.TREE_DECIDUOUS, x: (x + u) * T, y: (y + v) * T, h: this.surfaceZ(t, u, v) * L, heading: u * 5, scale: 0.45 });
+                }
                 if (m.sub[t] === GameMap.ROAD_SUB_CROSSING) {
                     for (let tr = 0; tr < 2; tr++) if (m.rail[t] & (1 << tr)) Models.railPiece(b, tr, ox, oy, (u, v) => zAt(u, v) + 0.6, m.railType[t]);
                 }
@@ -259,7 +278,7 @@ class TTDRender3D {
                     Models.railPiece(b, tr, ox, oy, zAt, m.railType[t], 'station');
                     Models.platform(b, tr, ox, oy, z, (x + y) % 2 === 0);
                 } else if (kind === GameMap.ST_BUS || kind === GameMap.ST_TRUCK) {
-                    Models.roadTile(b, m.road[t], ox, oy, zAt, false);
+                    Models.roadTile(b, m.road[t], ox, oy, zAt, GameMap.RS_GRASS, false);
                     Models.roadStop(b, m.road[t] === 5 ? 0 : 1, kind === GameMap.ST_TRUCK, ox, oy, z);
                 } else if (kind === GameMap.ST_AIRPORT) {
                     if (st && st.airport && st.airport.t === t) Models.airport(b, st.airport.type, ox, oy, z);
@@ -272,7 +291,7 @@ class TTDRender3D {
                 const wh = w.wormholes[m.obj[t]];
                 if (!wh) return;
                 if (m.rail[t]) Models.railPiece(b, m.rail[t] & 1 ? 0 : 1, ox, oy, zAt, m.railType[t]);
-                else Models.roadTile(b, m.road[t], ox, oy, zAt, false);
+                else Models.roadTile(b, m.road[t], ox, oy, zAt, GameMap.RS_GRASS, false);
                 if (wh.kind === 'bridge' && wh.a === t) {
                     Models.bridge(b, wh, m, wh.type);
                     // Track or road on the deck.
@@ -281,7 +300,7 @@ class TTDRender3D {
                         const bx = (m.tx(wh.a) + Dir.DX[wh.dir] * i) * T, by = (m.ty(wh.a) + Dir.DY[wh.dir] * i) * T;
                         const dz = () => wh.z * L + 1;
                         if (wh.rail) Models.railPiece(b, Track.axisTrack(Dir.axis(wh.dir)), bx, by, dz, m.railType[t]);
-                        else Models.roadTile(b, Dir.axis(wh.dir) === 0 ? 5 : 10, bx, by, dz, false);
+                        else Models.roadTile(b, Dir.axis(wh.dir) === 0 ? 5 : 10, bx, by, dz, GameMap.RS_GRASS, false);
                     }
                 }
                 if (wh.kind === 'tunnel') Models.tunnelPortal(b, m.density[t], ox, oy, m.pieceEdgeZ(t, Dir.reverse(m.density[t]), Dir.axis(m.density[t])) * L);

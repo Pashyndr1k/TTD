@@ -122,6 +122,87 @@ class GameMap {
         return this.tileMaxZ(t);
     }
 
+    // --- Roads on slopes (TTD's CheckRoadSlope / GetRoadFoundation) ---------------------------
+
+    /**
+     * Foundation a road with `bits` (1 << DiagDir) needs on tile t: 0 — none (flat, or a straight
+     * road along an incline), 1 — levelled (flat top at the highest corner), 2 — inclined (a
+     * straight road on a one-corner or steep slope: the tile is raised into an incline along the
+     * road), -1 — TTD does not allow these bits on this slope.
+     */
+    roadFoundation(t, bits) {
+        const s = this.slope(t);
+        if (s === 0) return 0;
+        const straight = bits === GameMap.ROAD_X || bits === GameMap.ROAD_Y;
+        if (s & GameMap.SLOPE_STEEP) return straight ? 2 : -1;
+        if ((bits & ~GameMap.ROAD_ON_SLOPE[s]) === 0) return 0;
+        if ((bits & ~GameMap.ROAD_ON_FOUNDATION[s]) === 0) return 1;
+        if (straight && (s === GameMap.SLOPE_W || s === GameMap.SLOPE_S || s === GameMap.SLOPE_E || s === GameMap.SLOPE_N)) return 2;
+        return -1;
+    }
+
+    /**
+     * TTD's CheckRoadSlope: may `pieces` be added to the `existing` road bits of tile t? Returns
+     * null if the land is sloped the wrong way, else { pieces, found }: pieces as TTD completes
+     * them (a half road on an incline or a one-corner slope becomes the full straight road) and
+     * found — a new foundation is paid for (the terraform price).
+     */
+    roadSlopeCheck(t, pieces, existing) {
+        const s = this.slope(t);
+        const full = (p) => p | ((p & 3) << 2) | ((p & 12) >> 2);   // NE<->SW, SE<->NW
+        if (s & GameMap.SLOPE_STEEP) {
+            if (existing) return null;
+            pieces = full(pieces);
+            return pieces === GameMap.ROAD_X || pieces === GameMap.ROAD_Y ? { pieces, found: true } : null;
+        }
+        const all = pieces | existing;
+        if ((all & ~GameMap.ROAD_ON_SLOPE[s]) === 0) {
+            if (s) pieces |= GameMap.ROAD_ON_SLOPE[s];
+            return { pieces, found: false };
+        }
+        if ((all & ~GameMap.ROAD_ON_FOUNDATION[s]) === 0) return { pieces, found: !existing };
+        if (!existing && (s === GameMap.SLOPE_W || s === GameMap.SLOPE_S || s === GameMap.SLOPE_E || s === GameMap.SLOPE_N)) {
+            pieces = full(pieces);
+            if (pieces === GameMap.ROAD_X || pieces === GameMap.ROAD_Y) return { pieces, found: true };
+        }
+        return null;
+    }
+
+    /**
+     * Height (levels) of the road end at edge d of road tile t: levelled — the top of the
+     * foundation; otherwise the higher corner of that edge (a flat tile, an incline, or the raised
+     * end of an inclined foundation).
+     */
+    roadEdgeZ(t, d) {
+        const f = this.roadFoundation(t, this.road[t]);
+        if (f === 1 || f < 0) return this.tileMaxZ(t);
+        const e = this.edgeCorners(t, d);
+        return Math.max(e[0], e[1]);
+    }
+
+    /**
+     * Heights of the built surface's corners [N, W, S, E] of a road tile with a foundation, or
+     * null — the road lies on the natural ground.
+     */
+    roadTop(t) {
+        const f = this.roadFoundation(t, this.road[t]);
+        if (f === 0) return null;
+        if (f !== 2) { const z = this.tileMaxZ(t); return [z, z, z, z]; }
+        if (this.road[t] === GameMap.ROAD_X) {
+            const ne = this.roadEdgeZ(t, Dir.NE), sw = this.roadEdgeZ(t, Dir.SW);
+            return [ne, sw, sw, ne];
+        }
+        const nw = this.roadEdgeZ(t, Dir.NW), se = this.roadEdgeZ(t, Dir.SE);
+        return [nw, nw, se, se];
+    }
+
+    /** Roadside of a road tile (GameMap.RS_*), kept in the low bits of density. */
+    roadside(t) { return this.density[t] & 7; }
+    setRoadside(t, rs) { this.density[t] = (this.density[t] & ~7) | rs; }
+    /** Road works counter (0 — none, 1..15 — in progress), the high bits of density. */
+    roadWorks(t) { return this.type[t] === GameMap.T_ROAD && this.sub[t] === 0 ? this.density[t] >> 4 : 0; }
+    setRoadWorks(t, n) { this.density[t] = (this.density[t] & 15) | (n << 4); }
+
     /** Height of the flat top of a building/station/depot on the tile (foundation on a slope). */
     buildZ(t) { return this.isFlat(t) ? this.tileMinZ(t) : this.tileMaxZ(t); }
 
@@ -198,6 +279,7 @@ class GameMap {
         this.owner[t] = GameMap.OWNER_NONE;
         this.roadOwner[t] = GameMap.OWNER_NONE;
         this.town[t] = -1;
+        this.density[t] = 0;
         this.markDirty(t);
     }
 
@@ -210,8 +292,13 @@ class GameMap {
      * canChange(t) decides whether a tile may change shape (clear land, trees, water edge).
      */
     planTerraform(cx, cy, dir, canChange) {
+        return this.planTerraformCorners([[cx, cy]], dir, canChange);
+    }
+
+    /** planTerraform for several corners moved together (TTD's terraform of a tile's corners). */
+    planTerraformCorners(list, dir, canChange) {
         const cw = this.CW, changed = new Map();
-        const queue = [[cx, cy, this.hc[cy * cw + cx] + dir]];
+        const queue = list.map(([cx, cy]) => [cx, cy, this.hc[cy * cw + cx] + dir]);
         while (queue.length) {
             const [x, y, h] = queue.pop();
             if (x <= 0 || y <= 0 || x >= this.W || y >= this.H) return null;   // edge corners stay at sea level
@@ -503,6 +590,21 @@ GameMap.SLOPE_NE = GameMap.SLOPE_N | GameMap.SLOPE_E;   // raised NE edge: rises
 GameMap.SLOPE_SW = GameMap.SLOPE_S | GameMap.SLOPE_W;
 GameMap.SLOPE_NW = GameMap.SLOPE_N | GameMap.SLOPE_W;
 GameMap.SLOPE_SE = GameMap.SLOPE_S | GameMap.SLOPE_E;
+
+// Road bits (1 << DiagDir): straight roads.
+GameMap.ROAD_X = 5;        // NE | SW
+GameMap.ROAD_Y = 10;       // SE | NW
+GameMap.ROAD_ALL = 15;
+// TTD's _valid_tileh_slopes_road, by slope (non-steep): road bits allowed on the bare slope, and
+// with a levelled foundation. NE 1, SE 2, SW 4, NW 8.
+GameMap.ROAD_ON_SLOPE = [15, 0, 0, 5, 0, 0, 10, 0, 0, 10, 0, 0, 5, 0, 0];
+GameMap.ROAD_ON_FOUNDATION = [0, 4 | 8, 4 | 2, 10 | 4, 2 | 1, 15, 5 | 2, 15, 8 | 1, 5 | 8, 15, 15, 10 | 1, 15, 15];
+// Roadside (TTD's Roadside): what lines a road; the tile loop sets it by the town zone.
+GameMap.RS_BARREN = 0;
+GameMap.RS_GRASS = 1;
+GameMap.RS_PAVED = 2;
+GameMap.RS_LIGHTS = 3;
+GameMap.RS_TREES = 4;
 
 GameMap.MAX_HEIGHT = 15;
 GameMap.CHUNK = 16;        // tiles per renderer chunk side
