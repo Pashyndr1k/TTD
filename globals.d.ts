@@ -10,8 +10,8 @@ declare namespace BABYLON {
 }
 
 interface Window {
-    /** main.js: the game's location, camera and game logic — for the console and game code. */
-    app?: { location: Location3D; camera: CameraController; game: Game | null };
+    /** main.js: the TTD game, its camera and 3D view — for the console and tests driving the page. */
+    app?: { game: Game; camera: CameraController; view: View3D };
 }
 
 /** UI_LAYOUT record (UILayout.js, written by the editor's UI tab); fields by kind — UI.DEFAULTS. */

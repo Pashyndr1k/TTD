@@ -16,7 +16,8 @@
 //     trees.dispose();
 //
 // item: { x, y — map px; h — height of the copy's origin, px (the helper does not ask the
-// terrain); heading — rad, like everywhere (the nose along +X turns to atan2(vy, vx));
+// terrain); heading — rad, like everywhere (the nose along +X turns to atan2(vy, vx)); pitch —
+// rad, optional: the nose tilts up (a vehicle climbing a slope);
 // scale — a number or [x, y, z]; 1 by default }.
 // source: a mesh with geometry, or a model root from Model3D.build (every part gets the same
 // instances). Its own position, rotation and scale are reset: the copies are placed by items.
@@ -77,14 +78,16 @@ class Instances3D {
         return parts;
     }
 
-    // One copy -> 16 floats at index i: scale, turn by the heading about the vertical, move to
-    // (x, h, y). No Babylon here (tests/instances.test.mjs).
+    // One copy -> 16 floats at index i: scale, tilt the nose up by the pitch (optional, rad —
+    // a vehicle on a slope), turn by the heading about the vertical, move to (x, h, y). No Babylon
+    // here (tests/instances.test.mjs).
     static fill(out, i, item) {
         const s = item.scale == null ? 1 : item.scale;
         const sx = Array.isArray(s) ? s[0] : s, sy = Array.isArray(s) ? s[1] : s, sz = Array.isArray(s) ? s[2] : s;
         const a = -(Number(item.heading) || 0), c = Math.cos(a), n = Math.sin(a), k = i * 16;
-        out[k] = sx * c; out[k + 1] = 0; out[k + 2] = -sx * n; out[k + 3] = 0;
-        out[k + 4] = 0; out[k + 5] = sy; out[k + 6] = 0; out[k + 7] = 0;
+        const p = Number(item.pitch) || 0, cp = Math.cos(p), sp = Math.sin(p);
+        out[k] = sx * cp * c; out[k + 1] = sx * sp; out[k + 2] = -sx * cp * n; out[k + 3] = 0;
+        out[k + 4] = -sy * sp * c; out[k + 5] = sy * cp; out[k + 6] = sy * sp * n; out[k + 7] = 0;
         out[k + 8] = sz * n; out[k + 9] = 0; out[k + 10] = sz * c; out[k + 11] = 0;
         out[k + 12] = Number(item.x) || 0; out[k + 13] = Number(item.h) || 0; out[k + 14] = Number(item.y) || 0; out[k + 15] = 1;
     }

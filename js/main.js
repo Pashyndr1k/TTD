@@ -1,13 +1,13 @@
-// main.js — entry point: 3D engine -> location with objects from Objects.js -> camera ->
-// UI (UILayout.js) -> game (Game.js) -> frame loop (Sound3D hears from where the camera is). window.app = { location, camera, game } —
-// for the console and for game code built on top of the kit.
+// main.js — entry point: 3D engine -> the TTD game (Game.js: world simulation, 3D view, camera,
+// HUD) -> frame loop (Sound3D hears from where the camera is). window.app = { game, camera, view } —
+// for the console and for tests driving the page.
 
 function updateLoadingProgress(percent) {
     const bar = /** @type {HTMLElement | null} */ (document.querySelector('.loading-progress'));
     if (bar) bar.style.width = percent + '%';
 }
 
-// The loading screen goes away when the location is ready.
+// The loading screen goes away when the first world is on screen.
 function hideLoader() {
     updateLoadingProgress(100);
     setTimeout(() => {
@@ -24,21 +24,13 @@ function showBootError(text) {
 
 function startGame() {
     if (window.app) return;                 // guard against a repeated start
-    if (typeof SimplexNoise === 'undefined') { showBootError('Нет libs/simplex-noise.js'); return; }
+    if (typeof SimplexNoise === 'undefined') { showBootError('No libs/simplex-noise.js'); return; }
     const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('world3d'));
     updateLoadingProgress(40);
-    if (!World3D.init(canvas)) { showBootError('3D недоступен: нет libs/babylon.js или WebGL'); return; }
-
-    const location = new Location3D({ objects: typeof LOCATION_OBJECTS !== 'undefined' ? LOCATION_OBJECTS : [] });
-    const camera = new CameraController(location.view, {
-        terrain: location.terrain,
-        bounds: { w: location.width, h: location.height }
-    });
-    camera.attach(canvas);
+    if (!World3D.init(canvas)) { showBootError('3D unavailable: no libs/babylon.js or WebGL'); return; }
     UI.init(canvas);
-    window.app = { location, camera, game: null };
-    const game = window.app.game = new Game(window.app);
-    console.log('ArcEngine: локация запущена, объектов ' + location.objects.length + '.');
+    const game = new Game(canvas);
+    window.app = { game, camera: game.camera, view: game.view };
     updateLoadingProgress(70);
 
     let last = performance.now();
@@ -46,13 +38,12 @@ function startGame() {
         const now = performance.now(), dt = (now - last) / 1000;
         last = now;
         game.update(Math.min(0.1, dt));
-        location.update(dt);
-        camera.update(dt);
-        Sound3D.update(camera);
+        game.camera.update(dt);
+        Sound3D.update(game.camera);
         World3D.renderFrame();
     });
     window.addEventListener('resize', () => World3D.resize());
-    location.ready.then(hideLoader);
+    game.ready.then(hideLoader);
 }
 
 window.onload = () => startGame();

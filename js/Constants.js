@@ -67,25 +67,61 @@ const AUDIO_FALLOFF_MIN = 150;          // px: full volume while the camera is t
 const AUDIO_FALLOFF_MAX = 1024;         // px: from here on it is silent (fades linearly in between); an object may set its own pair. The camera stands ~800 px from its look-at point at zoom 1
 const AUDIO_PAN = 0.7;                  // 0..1: how far a sound at the side of the screen goes into one ear (0 — mono)
 
-// --- SAMPLE GAME (Game.js): the "Run" button, the energy bar ---
-const GAME_RUN_SEC = 8;                 // s: a full energy bar lasts this long while running
-const GAME_REST_SEC = 4;                // s: an empty energy bar refills in this time while standing
-const GAME_STEP_SEC = 0.35;             // s: between footstep sounds while the character runs
+// --- TTD REMAKE: world scale (js/TTD*.js). Tiles and height levels are the game's units; these
+// only say how big they are in the 3D world ---
+const TTD_TILE = 64;                    // world px per map tile side
+const TTD_LEVEL = 24;                   // world px per height level (TTD: a level is ~0.4 of a tile)
+const TTD_WATER_LEVEL = 0.35;           // sea surface, in height levels above level 0
+const TTD_WATER_COLOR = 0x2f6fa8;       // sea color
+const TTD_TICK_MS = 27;                 // ms of real time per game tick at normal speed (74 ticks = 1 day)
+const TTD_FAST_FORWARD = 6;             // fast forward: game ticks per normal tick
+
+// --- TTD REMAKE: new game defaults — taken from the player's openttd.cfg (TTD.zip) ---
+const TTD_MAP_SIZE_LOG2 = 7;            // map side 2^N tiles (map_x = map_y = 7 -> 128 x 128); 6..9
+const TTD_CLIMATE = 1;                  // 0 — temperate, 1 — sub-tropical (landscape = desert)
+const TTD_START_YEAR = 1941;            // starting_year
+const TTD_END_YEAR = 2051;              // ending_year: the game shows the final score on 1 Jan
+const TTD_TOWNS = 1;                    // number of towns: 0 very low, 1 low, 2 normal, 3 high
+const TTD_INDUSTRIES = 2;               // number of industries: 0 very low .. 3 high (2 — normal)
+const TTD_TERRAIN = 3;                  // terrain type: 0 very flat, 1 flat, 2 hilly, 3 mountainous
+const TTD_SEA = 1;                      // quantity of sea/lakes: 0 very low .. 3 high
+const TTD_MAX_LOAN = 100000;            // £: maximum initial loan (diff_custom max_loan 100 -> £100,000)
+const TTD_INTEREST = 4;                 // %: initial interest rate per year
+const TTD_VEHICLE_COSTS = 1;            // running costs: 0 low, 1 medium, 2 high
+const TTD_CONSTRUCTION_COSTS = 2;       // construction costs: 0 low, 1 medium, 2 high
+const TTD_BREAKDOWNS = 2;               // vehicle breakdowns: 0 none, 1 reduced, 2 normal
+const TTD_SUBSIDY_MULT = 0;             // subsidy multiplier: 0 x1.5, 1 x2, 2 x3, 3 x4
+const TTD_ECONOMY = 1;                  // 0 steady, 1 variable (industry production swings, closures)
+const TTD_DISASTERS = 1;                // 0 off, 1 on
+const TTD_TOWN_TOLERANCE = 2;           // town council attitude: 0 permissive, 1 tolerant, 2 hostile
+const TTD_CURRENCY = 1;                 // 0 pounds, 1 dollars (x2), 2 euro (x2), 3 roubles (x50)
+const TTD_TOWN_NAMES = 1;               // 0 English, 1 Catalan (town_name = catalan)
+const TTD_INFLATION = 1;                // 0 off, 1 on: prices and payments rise each month
+const TTD_SERVICE_DAYS_TRAIN = 150;     // default service interval, days (servint_trains)
+const TTD_SERVICE_DAYS_ROAD = 150;      // servint_roadveh
+const TTD_SERVICE_DAYS_SHIP = 360;      // servint_ships
+const TTD_SERVICE_DAYS_AIR = 100;       // servint_aircraft
+const TTD_AUTORENEW = 1;                // replace old vehicles when they visit a depot: 0 off, 1 on
+const TTD_AUTORENEW_MONTHS = 6;         // months before the end of life that autorenew kicks in
+const TTD_AUTORENEW_MONEY = 100000;     // £ that must remain after an autorenew
+const TTD_GRADUAL_LOADING = 1;          // 1 — vehicles load a portion per step (gradual_loading)
+const TTD_TRAIN_ACCEL = 1;              // 1 — realistic acceleration (slopes slow heavy trains)
+const TTD_SEED = 0;                     // map seed; 0 — random every new game
 
 // --- CAMERA (CameraControl.js): target on the map, azimuth, pitch and zoom. Zoom is
 // screen px per world px at the look-at point; distance is derived from it. Flight
 // (WASD, Q/E) lifts the look-at point off the ground. ---
 const CAMERA_FOV_DEG = 52;              // vertical field of view
-const CAMERA_AZIMUTH_DEG = -90;         // where the camera looks on the map: −90 — north up, 0 — east up
-const CAMERA_PITCH_DEG = 57;            // pitch toward the ground: 90 — straight from above, less — more perspective
-const CAMERA_ZOOM = 1;                  // starting zoom: PC and tablets
-const CAMERA_ZOOM_MOBILE = 0.7;         // starting zoom: phones (longer screen side < 1024)
-const CAMERA_ZOOM_MIN = 0.5;            // wheel and pinch won't zoom out further (below this the ground edge gets into the frame)
+const CAMERA_AZIMUTH_DEG = -135;        // where the camera looks on the map: −135 — TTD view (tile 0,0 at the top), −90 — north up
+const CAMERA_PITCH_DEG = 50;            // pitch toward the ground: 90 — straight from above, less — more perspective
+const CAMERA_ZOOM = 0.55;               // starting zoom: PC and tablets
+const CAMERA_ZOOM_MOBILE = 0.4;         // starting zoom: phones (longer screen side < 1024)
+const CAMERA_ZOOM_MIN = 0.07;           // wheel and pinch won't zoom out further (below this the ground edge gets into the frame)
 const CAMERA_ZOOM_MAX = 3;              // won't zoom in closer
 const CAMERA_ZOOM_WHEEL_STEP = 0.12;    // fraction of zoom per one wheel notch
 const CAMERA_ZOOM_LERP = 0.18;          // zoom smoothing: fraction of the remainder per frame
 const CAMERA_FOLLOW_LERP = 0.05;        // following an object (follow): fraction of the remainder per frame
-const CAMERA_FLY_SPEED = 900;           // flight on WASD, arrows and Q/E: screen px/s (over the world — divided by zoom)
+const CAMERA_FLY_SPEED = 1100;           // flight on WASD, arrows and Q/E: screen px/s (over the world — divided by zoom)
 const CAMERA_LIMITS = 0;                // game camera limits: 0 — free flight, 1 — pitch within CAMERA_ORBIT_PITCH_*, target inside the location, flight ceiling; the ground edge stays out of the frame
 const CAMERA_LIFT_MAX = 600;            // px, with limits: how high above the ground flight lifts the look-at point (higher — the ground edge gets into the frame)
 const CAMERA_ORBIT = 1;                 // camera rotation by the player (RMB: look-around, orbit while following an object): 0 — orientation fixed, 1 — allowed
@@ -104,7 +140,7 @@ const WORLD3D_SKYLIGHT_INTENSITY = 0.45; // diffuse sky light (hemispheric light
 const WORLD3D_SKYLIGHT_COLOR = 0xb1d8f7; // sky light color (faces looking up)
 const WORLD3D_GROUNDLIGHT_COLOR = 0xc2c7ad; // fill light from below (reflection off the ground)
 const WORLD3D_SKY_COLOR = 0x8fc3e0;     // sky and fog color
-const WORLD3D_FOG_DENSITY = 0.00032;    // exponential fog toward the horizon (0 — off)
+const WORLD3D_FOG_DENSITY = 0.00007;    // exponential fog toward the horizon (0 — off)
 // Shadows: one color for all (painted by the toon plugin, Babylon only provides sun visibility)
 const WORLD3D_SHADOW_COLOR = 0x0f3a4d;  // shadow color
 const WORLD3D_SHADOW_STRENGTH = 0.52;    // shadow strength 0..1: a surface in shadow is multiplied by a blend of white and the shadow color

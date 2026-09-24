@@ -44,6 +44,7 @@ class CameraController {
         this.zoomTarget = 1;
         this.followObj = null;
         this.ignorePointer = null;     // (e) => true — the press is not for the camera (editor: gizmo under the cursor)
+        this.leftPan = false;          // game mode: LMB drag pans the map too (the game turns it off while a tool is active)
         this.viewVersion = 0;          // grows with every camera move (re-project overlays)
         this._lastCam = null;
         this._pointers = new Map();    // pointerId -> { x, y, mode: 'pan' | 'orbit' | 'look' | 'touch', anchor }
@@ -398,6 +399,7 @@ class CameraController {
         else if (e.button === 1 || (e.button === 0 && this.free && e.shiftKey)) mode = 'pan';
         else if (e.button === 2 && (this.free || this.c.orbit > 0)) mode = this.followObj ? 'orbit' : 'look';
         else if (e.button === 0 && this.free) mode = 'orbit';
+        else if (e.button === 0 && this.leftPan) mode = 'pan';
         if (!mode) return;
         e.preventDefault();
         try { this._canvas.setPointerCapture(e.pointerId); } catch (err) { /* synthetic event */ }

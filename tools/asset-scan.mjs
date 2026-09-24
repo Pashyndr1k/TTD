@@ -22,7 +22,7 @@ export const EXTRA_REFS = [];
 // index.html = a new line here, otherwise the file will not get into the archive.
 export const CODE_FILES = [
   'index.html',
-  'js/Constants.js', 'js/Objects.js', 'js/UILayout.js', 'js/Sound3D.js', 'js/World3D.js', 'js/Terrain3D.js', 'js/CameraControl.js', 'js/Model3D.js', 'js/Gltf3D.js', 'js/Instances3D.js', 'js/Location3D.js', 'js/Debug3D.js', 'js/UI.js', 'js/Game.js', 'js/main.js',
+  'js/Constants.js', 'js/UILayout.js', 'js/Sound3D.js', 'js/World3D.js', 'js/CameraControl.js', 'js/Model3D.js', 'js/Gltf3D.js', 'js/Instances3D.js', 'js/Debug3D.js', 'js/UI.js', 'js/TTDUtil.js', 'js/TTDData.js', 'js/TTDMap.js', 'js/TTDTrack.js', 'js/TTDTown.js', 'js/TTDIndustry.js', 'js/TTDStation.js', 'js/TTDCompany.js', 'js/TTDVehicle.js', 'js/TTDTrain.js', 'js/TTDRoadVehicle.js', 'js/TTDShip.js', 'js/TTDAircraft.js', 'js/TTDWorld.js', 'js/TTDCommands.js', 'js/TTDTerrain3D.js', 'js/TTDModels3D.js', 'js/TTDRender3D.js', 'js/TTDTools.js', 'js/TTDGui.js', 'js/Game.js', 'js/main.js',
   'libs/simplex-noise.js', 'libs/babylon.js', 'libs/babylonjs.loaders.min.js',
 ];
 
