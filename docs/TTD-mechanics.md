@@ -84,16 +84,43 @@ The 18 fields of `diff_custom` decoded (OpenTTD 0.5 `GameDifficulty`):
 **Remake:** `GameMap` (`js/TTDMap.js`) has corner heights, TTD's slope bits and foundations.
 Track and road only connect across an edge when both ends are at the same height.
 The generator is simplex noise shaped into levels, the sea and desert/rainforest zones.
+Most land is plains of one or two levels; mountains rise on the highest part only, so they cover
+at most 30 % of the land even on "Mountainous" (`GameMap.MOUNTAIN_SHARE`). Every new game is a
+new map: seed 0 draws a random seed, shown in the new game dialog.
 Land lowered to sea level next to water floods.
+
+## 2b. Track on slopes (TTD's `CheckRailSlope`, `_valid_tileh_slopes`)
+
+- A straight piece along an incline, or a corner piece lying level along a slope, needs no
+  foundation. The track follows the ground, so a line over hills is a smooth ramp, not steps.
+- A straight piece on a one-corner or steep slope gets an inclined foundation (a ramp).
+- Other pieces get a levelled foundation when TTD's table allows them there. On a steep slope
+  only the corner pieces along its level line can go.
+- A foundation costs £250 and can't be changed once track is on it.
+- Every piece's end is at the higher corner of its edge, so neighbouring pieces meet.
+- Dragging track stops at the first piece that can't be built, as in TTD.
+- **Curves:** a corner piece between two straights is drawn and driven as a curve (a quarter
+  circle). A line of corner pieces (TTD's diagonal track) is drawn straight.
+
+**Remake:** `GameMap.railFoundation`, `railSlopeCheck`, `railTop`; `Track.curve`, used by the
+renderer and by `Track.pointOn` for trains.
 
 ## 2a. Roads (TTD's `road_cmd.c`)
 
 - **Pieces:** a road tile holds up to four half pieces, one from the centre to each edge. A lone
   half is a dead end; vehicles turn round at the end of it.
-- **Tools:** two road tools, one per axis (╱ NE–SW and ╲ NW–SE). A drag runs along that axis
-  from the half tile under the press to the half tile under the release, so a click builds
-  one half. The whole drag is built or none of it: the first tile that can't take road (a
-  house, a station, a wrong slope) stops it. Pieces already built are skipped and not paid for.
+- **No diagonal pieces:** TTD roads only run along X and Y. What looks like a diagonal road in
+  TTD is a zig-zag of turns, each tile joining two neighbouring edges. The remake draws such a
+  chain as a straight diagonal road, and a turn between straight roads as a curve.
+- **The road tool:**
+  - a drag along a row or a column runs from the half tile under the press to the half tile
+    under the release, so a click builds one half (TTD's rule);
+  - a slanted drag steps along X and Y as close to the line as it can: turns and straights;
+  - an end also takes the half that meets a road just behind the start or beyond the end,
+    so a new drag joins the road it starts or stops at. Crossing a road makes a junction;
+  - the whole drag is built or none of it: the first tile that can't take road (a house, a
+    station, a wrong slope) stops it;
+  - pieces already built are skipped and not paid for.
 - **Cost:** £95 per new half piece, plus clearing the land (grass, trees, fields…), plus £250
   for a foundation.
 - **Slopes** (TTD's `_valid_tileh_slopes_road`):
@@ -114,9 +141,10 @@ Land lowered to sea level next to water floods.
     (permissive, tolerant or hostile council);
   - the town's rating drops by 18 for the end of a road and by 50 for a piece in the middle;
   - a piece in the middle (the tile joins two or more roads) can only go with `extra_dynamite`.
-- **Depots:** on a slope the side with the entrance must be raised (TTD's
-  `CanBuildDepotByTileh`). A depot doesn't connect to the road by itself: lead a half road
-  into it.
+- **Depots:** train and road vehicle depots are separate buildings, each built from its own
+  toolbar: an engine shed over the track, and a garage with a forecourt. On a slope the side
+  with the entrance must be raised (TTD's `CanBuildDepotByTileh`). A depot doesn't connect by
+  itself: lead a half road (or a piece of track) into it.
 - **Roadside** (TTD's `TileLoop_Road`, every 256 ticks per tile): the verges move one step at a
   time toward what the nearest town's zone wants:
   - new road starts bare;
@@ -131,7 +159,7 @@ Land lowered to sea level next to water floods.
   chance per tile. A dug-up tile is closed to traffic for 15 tile loops (about 52 days), and
   vehicles route around it.
 
-**Remake:** all of the above (`Commands.buildRoad`, `removeRoad`, `roadDrag`, `buildLongRoad`,
+**Remake:** all of the above (`Commands.buildRoad`, `removeRoad`, `roadDrag`, `roadPath`, `buildLongRoad`,
 `removeLongRoad`; `GameMap.roadSlopeCheck`, `roadFoundation`, `roadEdgeZ`, `roadTop`;
 `World.roadTileLoop`). The 3D view draws levelled and inclined foundations with cliff walls.
 

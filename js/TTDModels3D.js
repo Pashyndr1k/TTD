@@ -312,47 +312,64 @@ const Models = {
     // --- Track and road -------------------------------------------------------------------------
 
     /** One rail piece on tile (x, y) — ballast, sleepers, two rails; z(u, v) gives heights (px). */
-    railPiece(b, track, ox, oy, zAt, railType, style) {
+    /**
+     * One piece of track. curve — for corner pieces, the centre line from Track.curve (tile-local
+     * Bézier from the piece's first edge to its second); straight pieces pass nothing.
+     */
+    railPiece(b, track, ox, oy, zAt, railType, style, curve) {
         const T = Models.T, C = Models.C;
         const e = Track.EDGES[track];
-        const a = Track.MID[e[0]], c = Track.MID[e[1]];
-        const ax = a[0] * T, ay = a[1] * T, bx = c[0] * T, by = c[1] * T;
-        const len = Math.hypot(bx - ax, by - ay), dx = (bx - ax) / len, dy = (by - ay) / len;
-        const nx = -dy, ny = dx;
-        const P = (s, off, up) => {
-            const x = ax + dx * s + nx * off, y = ay + dy * s + ny * off;
+        const A = Track.MID[e[0]], B = Track.MID[e[1]];
+        // Centre line point and unit normal at f (0..1), in local px.
+        const at = (f) => {
+            if (curve) {
+                const c = Track.bezier(curve, f), l = Math.hypot(c.dx, c.dy) || 1;
+                return { x: c.x * T, y: c.y * T, nx: -c.dy / l, ny: c.dx / l };
+            }
+            const dx = B[0] - A[0], dy = B[1] - A[1], l = Math.hypot(dx, dy);
+            return { x: (A[0] + dx * f) * T, y: (A[1] + dy * f) * T, nx: -dy / l, ny: dx / l };
+        };
+        const P = (f, off, up) => {
+            const q = at(f), x = q.x + q.nx * off, y = q.y + q.ny * off;
             return [ox + x, zAt(x / T, y / T) + up, oy + y];
         };
-        const strip = (off0, off1, up, col, over) => {
-            const s0 = -(over || 0), s1 = len + (over || 0);
-            b.quad([P(s0, off0, up), P(s1, off0, up), P(s1, off1, up), P(s0, off1, up)], null, col, [0, 1, 0]);
+        const segs = curve ? 8 : 1;
+        let len = 0;
+        for (let i = 0; i < 8; i++) { const p0 = at(i / 8), p1 = at((i + 1) / 8); len += Math.hypot(p1.x - p0.x, p1.y - p0.y); }
+        const strip = (off0, off1, up, col, side) => {
+            for (let i = 0; i < segs; i++) {
+                const f0 = i / segs, f1 = (i + 1) / segs, q = at((f0 + f1) / 2);
+                const n = side ? [q.nx * side, 0, q.ny * side] : [0, 1, 0];
+                if (side) b.quad([P(f0, off0, up[0]), P(f1, off0, up[0]), P(f1, off0, up[1]), P(f0, off0, up[1])], null, col, n);
+                else b.quad([P(f0, off0, up), P(f1, off0, up), P(f1, off1, up), P(f0, off1, up)], null, col, n);
+            }
         };
         const ballast = style === 'station' ? C('#8a8a84') : C('#8c7f6a');
         strip(-T * 0.2, T * 0.2, 0.8, ballast, 0);
-        // Sleepers.
+        // Sleepers, square to the centre line.
         const n = Math.max(2, Math.round(len / (T * 0.11)));
+        const df = 0.025 * T / len;
         for (let i = 0; i < n; i++) {
-            const s = (i + 0.5) * len / n;
-            b.quad([P(s - T * 0.025, -T * 0.15, 1.6), P(s + T * 0.025, -T * 0.15, 1.6), P(s + T * 0.025, T * 0.15, 1.6), P(s - T * 0.025, T * 0.15, 1.6)], null, C('#5a4030'), [0, 1, 0]);
+            const f = (i + 0.5) / n;
+            b.quad([P(f - df, -T * 0.15, 1.6), P(f + df, -T * 0.15, 1.6), P(f + df, T * 0.15, 1.6), P(f - df, T * 0.15, 1.6)], null, C('#5a4030'), [0, 1, 0]);
         }
         const rail = railType === 2 ? C('#a0a8b0') : railType === 3 ? C('#c8d0d8') : C('#9098a0');
         if (railType >= 2) {
             // Monorail / maglev: one raised beam.
-            b.quad([P(0, -T * 0.07, 4), P(len, -T * 0.07, 4), P(len, T * 0.07, 4), P(0, T * 0.07, 4)], null, rail, [0, 1, 0]);
+            strip(-T * 0.07, T * 0.07, 4, rail, 0);
             return;
         }
         for (const off of [-T * 0.085, T * 0.085]) {
-            b.quad([P(0, off - 1, 3), P(len, off - 1, 3), P(len, off + 1, 3), P(0, off + 1, 3)], null, rail, [0, 1, 0]);
-            b.quad([P(0, off - 1, 1.6), P(len, off - 1, 1.6), P(len, off - 1, 3), P(0, off - 1, 3)], null, Models.shade(rail, 0.7), [nx, 0, ny]);
-            b.quad([P(0, off + 1, 1.6), P(len, off + 1, 1.6), P(len, off + 1, 3), P(0, off + 1, 3)], null, Models.shade(rail, 0.7), [-nx, 0, -ny]);
+            strip(off - 1, off + 1, 3, rail, 0);
+            strip(off - 1, off - 1, [1.6, 3], Models.shade(rail, 0.7), -1);
+            strip(off + 1, off + 1, [1.6, 3], Models.shade(rail, 0.7), 1);
         }
         if (railType === 1) {
             // Catenary poles and wire.
             const pole = C('#6a6a6a');
-            const s = len * 0.5, off = T * 0.24;
-            const p0 = P(s, off, 0);
+            const p0 = P(0.5, T * 0.24, 0);
             b.box(-1.2, 0, -1.2, 1.2, T * 0.45, 1.2, pole, { ox: p0[0], oz: p0[2], oy: p0[1] });
-            b.quad([P(0, -0.8, T * 0.4), P(len, -0.8, T * 0.4), P(len, 0.8, T * 0.4), P(0, 0.8, T * 0.4)], null, C('#303030'), [0, 1, 0]);
+            strip(-0.8, 0.8, T * 0.4, C('#303030'), 0);
         }
     },
 
@@ -372,9 +389,10 @@ const Models = {
 
     /**
      * Road surface for the road bits of a tile. rs — roadside (GameMap.RS_*): pavements on paved
-     * roadsides, and street lamps too with RS_LIGHTS; works — road works barriers.
+     * roadsides, and street lamps too with RS_LIGHTS; works — road works barriers; curve — for a
+     * turn (two perpendicular halves), its centre line from Track.curve, drawn as a curved road.
      */
-    roadTile(b, bits, ox, oy, zAt, rs, works) {
+    roadTile(b, bits, ox, oy, zAt, rs, works, curve) {
         const town = rs === GameMap.RS_PAVED || rs === GameMap.RS_LIGHTS;
         const T = Models.T, C = Models.C;
         const asphalt = C('#5a5a5c'), line = C('#d8d0b0'), walk = C('#a8a49c');
@@ -385,6 +403,20 @@ const Models = {
                 [ox + u1 * T, z(u1, v1), oy + v1 * T], [ox + u0 * T, z(u0, v1), oy + v1 * T]], null, col, [0, 1, 0]);
         };
         const w0 = 0.26, w1 = 0.74;
+        if (curve) {
+            // A band along the curve: asphalt, and pavements on both sides on paved roadsides.
+            const at = (f) => { const c = Track.bezier(curve, f), l = Math.hypot(c.dx, c.dy) || 1; return [c.x, c.y, -c.dy / l, c.dx / l]; };
+            const band = (o0, o1, col, lift) => {
+                for (let i = 0; i < 8; i++) {
+                    const p = at(i / 8), q = at((i + 1) / 8);
+                    const V = (r, o) => { const u = r[0] + r[2] * o, v = r[1] + r[3] * o; return [ox + u * T, zAt(u, v) + up + lift, oy + v * T]; };
+                    b.quad([V(p, o0), V(q, o0), V(q, o1), V(p, o1)], null, col, [0, 1, 0]);
+                }
+            };
+            band(-0.24, 0.24, asphalt, 0);
+            if (town) { band(-0.32, -0.24, walk, 0.6); band(0.24, 0.32, walk, 0.6); }
+            return;
+        }
         Q(w0, w0, w1, w1, asphalt);
         if (bits & 1) Q(0, w0, w0, w1, asphalt);          // NE (x = 0)
         if (bits & 4) Q(w1, w0, 1, w1, asphalt);          // SW
@@ -466,15 +498,45 @@ const Models = {
     depot(b, dir, ox, oy, z, kind) {
         const T = Models.T, C = Models.C;
         const o = { ox, oz: oy, oy: z };
-        const wall = kind === 'rail' ? C('#a0503a') : kind === 'road' ? C('#8a8a90') : C('#c8b890');
-        b.box(T * 0.12, 0, T * 0.12, T * 0.88, T * 0.42, T * 0.88, wall, o);
-        b.roof(T * 0.1, T * 0.1, T * 0.9, T * 0.9, T * 0.42, T * 0.16, C('#4a4a50'), { ox, oz: oy, oy: z, alongZ: Dir.axis(dir) === 1 });
-        // The dark doorway on the entrance side.
-        const m = Track.MID[dir];
-        const cx = m[0] * T, cz = m[1] * T;
-        const dark = C('#202024');
-        if (Dir.axis(dir) === 0) b.box(cx - 0.8 + (dir === Dir.NE ? T * 0.12 : -T * 0.12), 0, T * 0.3, cx + 0.8 + (dir === Dir.NE ? T * 0.12 : -T * 0.12), T * 0.34, T * 0.7, dark, o);
-        else b.box(T * 0.3, 0, cz - 0.8 + (dir === Dir.NW ? T * 0.12 : -T * 0.12), T * 0.7, T * 0.34, cz + 0.8 + (dir === Dir.NW ? T * 0.12 : -T * 0.12), dark, o);
+        // Local frame: a runs from the back of the tile (0) to the entrance edge (1), c across.
+        // rect() turns an a/c rectangle into tile px [x0, z0, x1, z1].
+        const rect = (a0, a1, c0, c1) => {
+            const U = (a, c) => dir === Dir.NE ? [1 - a, c] : dir === Dir.SW ? [a, c] : dir === Dir.NW ? [c, 1 - a] : [c, a];
+            const p = U(a0, c0), q = U(a1, c1);
+            return [Math.min(p[0], q[0]) * T, Math.min(p[1], q[1]) * T, Math.max(p[0], q[0]) * T, Math.max(p[1], q[1]) * T];
+        };
+        const box = (a0, a1, c0, c1, h0, h1, col) => {
+            const r = rect(a0, a1, c0, c1);
+            b.box(r[0], h0, r[1], r[2], h1, r[3], col, o);
+        };
+        const along = Dir.axis(dir) === 1;   // the building's long side follows the entrance axis
+        if (kind === 'rail') {
+            // TTD's engine shed: a long brick shed over the track, gable roof along the track,
+            // a tall dark doorway with a white frame, a smoke vent on the ridge.
+            const brick = C('#9a4632'), h = T * 0.4;
+            box(0.04, 0.8, 0.16, 0.84, 0, h, brick);
+            const r = rect(0.02, 0.82, 0.12, 0.88);
+            b.roof(r[0], r[1], r[2], r[3], h, T * 0.2, C('#3e4046'), { ox, oz: oy, oy: z, alongZ: along });
+            box(0.8, 0.81, 0.3, 0.7, 0, T * 0.36, C('#e8e4d8'));
+            box(0.8, 0.815, 0.34, 0.66, 0, T * 0.32, C('#18181c'));
+            box(0.36, 0.46, 0.46, 0.54, h + T * 0.12, h + T * 0.3, C('#5a5a5e'));
+            return;
+        }
+        if (kind === 'road') {
+            // A garage: flat roof, pale walls, two roller doors on the forecourt side, a red sign.
+            const h = T * 0.3;
+            box(0.04, 0.52, 0.08, 0.92, 0, h, C('#b8bcc4'));
+            box(0.02, 0.54, 0.06, 0.94, h, h + 1.5, C('#5a5e66'));
+            box(0.52, 0.53, 0.14, 0.48, 0, T * 0.24, C('#d8d8d0'));
+            box(0.52, 0.53, 0.52, 0.86, 0, T * 0.24, C('#d8d8d0'));
+            for (const c0 of [0.14, 0.52]) for (let i = 1; i < 5; i++) box(0.525, 0.535, c0, c0 + 0.34, i * T * 0.048, i * T * 0.048 + 0.6, C('#8a8a86'));
+            box(0.3, 0.36, 0.2, 0.8, h + 1.5, h + T * 0.1, C('#c83a2e'));
+            return;
+        }
+        // Ship depot: a boat shed on the water.
+        box(0.12, 0.88, 0.12, 0.88, 0, T * 0.42, C('#c8b890'));
+        b.roof(T * 0.1, T * 0.1, T * 0.9, T * 0.9, T * 0.42, T * 0.16, C('#4a4a50'), { ox, oz: oy, oy: z, alongZ: along });
+        box(0.86, 0.9, 0.3, 0.7, 0, T * 0.34, C('#202024'));
     },
 
     /** Airport of type at local origin (whole footprint). */

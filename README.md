@@ -52,13 +52,16 @@ build.bat          # or: node tools/build.mjs          -> dist/*.zip
   - Construction: railway, roads, docks, airports, demolish, landscaping and the "?" land info tool.
 - **A first route:**
   1. Railway → Station near a town or industry. The blue area is the catchment.
-  2. Track: drag to lay it. Diagonal drags lay diagonal track.
+  2. Track: drag to lay it. Diagonal drags lay diagonal track; a click near a tile corner lays
+     a corner piece, drawn as a curve. Track follows TTD's slope rules and ramps up hills.
   3. Depot next to the track.
   4. Click the depot → New vehicles → buy an engine, then add wagons.
   5. In the train window: Go To… → click station A, Go To… → click station B, then Start.
 - **Road services:** road + bus or lorry stops + a road depot.
-  - Roads work like TTD's: one tool per direction ("Road /" and "Road \\"). Drag from the half
-    tile you press to the half tile you release; a click builds a half.
+  - Roads work like TTD's. Drag along a row from the half tile you press to the half tile you
+    release; a click builds a half. A slanted drag zig-zags along X and Y (TTD's diagonal
+    road) and is drawn as a diagonal road; turns are drawn as curves.
+  - A drag joins the road it starts or ends at, and crossing a road makes a junction.
   - A drag is built whole or not at all. On slopes the road gets TTD's foundations.
   - Lead a half road into a depot's entrance; depots don't join the road by themselves.
   - Towns grow their own roads the TTD way, along your roads too.

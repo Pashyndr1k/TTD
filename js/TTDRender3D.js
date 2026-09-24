@@ -120,6 +120,7 @@ class TTDRender3D {
     foundationOf(t) {
         const m = this.map;
         if (m.type[t] === GameMap.T_ROAD && m.sub[t] === 0) return m.roadTop(t);
+        if (m.type[t] === GameMap.T_RAIL && m.sub[t] === 0) return m.railTop(t);
         const z = this.levelFoundation(t);
         return z < 0 ? null : [z, z, z, z];
     }
@@ -135,11 +136,6 @@ class TTDRender3D {
         }
         if (m.isFlat(t)) return -1;
         const incl = m.inclineAxis(t);
-        if (k === GameMap.T_RAIL && m.sub[t] === 0) {
-            const bits = m.rail[t];
-            if (incl >= 0 && bits === (1 << Track.axisTrack(incl))) return -1;
-            return m.tileMaxZ(t);
-        }
         if (k === GameMap.T_STATION && (m.sub[t] === GameMap.ST_BUS || m.sub[t] === GameMap.ST_TRUCK) && incl >= 0) return -1;
         if (k === GameMap.T_STATION && m.sub[t] === GameMap.ST_DOCK) return -1;
         return m.buildZ(t);
@@ -231,7 +227,11 @@ class TTDRender3D {
                     }
                     return;
                 }
-                for (let tr = 0; tr < 6; tr++) if (m.rail[t] & (1 << tr)) Models.railPiece(b, tr, ox, oy, zAt, m.railType[t]);
+                for (let tr = 0; tr < 6; tr++) {
+                    if (!(m.rail[t] & (1 << tr))) continue;
+                    const E = Track.EDGES[tr];
+                    Models.railPiece(b, tr, ox, oy, zAt, m.railType[t], undefined, tr >= 2 ? Track.curve(m, t, E[0], E[1], 'rail') : null);
+                }
                 this._signalsOf(b, t, zAt, signals);
                 return;
             }
@@ -244,8 +244,14 @@ class TTDRender3D {
                     }
                     return;
                 }
-                const rs = m.roadside(t);
-                Models.roadTile(b, m.road[t], ox, oy, zAt, rs, m.roadWorks(t) > 0);
+                const rs = m.roadside(t), bits = m.road[t];
+                let curve = null;
+                if (m.sub[t] === 0 && (bits === 3 || bits === 6 || bits === 12 || bits === 9)) {
+                    // A turn: the two edges it joins (NE|SE, SE|SW, SW|NW, NW|NE).
+                    const e1 = bits === 9 ? 3 : Math.log2(bits & -bits), e2 = bits === 9 ? 0 : e1 + 1;
+                    curve = Track.curve(m, t, e1, e2, 'road');
+                }
+                Models.roadTile(b, bits, ox, oy, zAt, rs, m.roadWorks(t) > 0, curve);
                 if (rs === GameMap.RS_TREES && m.sub[t] === 0) {
                     // Roadside trees: small ones in the verges beside the road.
                     const bits = m.road[t];

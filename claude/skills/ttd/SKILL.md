@@ -65,8 +65,11 @@ formula and says what is implemented or left out.
 7. **Roads follow TTD's road_cmd.c.** Every road piece, the player's or a town's, goes through
    `Commands.buildRoad` (town roads pass the town). Slopes, foundations and a road's end
    heights come only from `GameMap.roadSlopeCheck` / `roadFoundation` / `roadEdgeZ`; the
-   renderer draws `roadTop`. The road tool builds a `Commands.roadDrag` list with
-   `buildLongRoad` (all or nothing) or `removeLongRoad`. On a road tile, `density` holds the
+   renderer draws `roadTop`. The road tool builds a `Commands.roadPath` list (straight
+   half-tile drags, zig-zags for slanted drags, ends joining roads) with `buildLongRoad` (all
+   or nothing) or `removeLongRoad`. Track slopes likewise come from `GameMap.railFoundation` /
+   `railSlopeCheck` / `railTop`; plain track ends sit at `edgeMaxZ`. Corner pieces and road
+   turns are curves from `Track.curve` — the renderer and the vehicles use the same one. On a road tile, `density` holds the
    roadside (low 3 bits, `GameMap.RS_*`) and the road works counter (high 4 bits).
 8. **Tunable numbers are `TTD_*` constants** in `Constants.js` with a row in the editor schema
    (`ttd-world`, `ttd-newgame` groups); TTD's own tables stay in `TTDData.js`.

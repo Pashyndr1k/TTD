@@ -53,8 +53,74 @@ const Track = {
      * (toward the other head) is at the deck / tunnel floor height stored in map.wz.
      */
     edgeZ(map, t, d, axis) {
-        if (map.type[t] === GameMap.T_TUNBRIDGE && map.density[t] === d) return map.wz[t];
+        const k = map.type[t];
+        if (k === GameMap.T_TUNBRIDGE && map.density[t] === d) return map.wz[t];
+        // Plain track and level crossings: TTD's foundations put every piece end at the higher
+        // corner of its edge (GameMap.railFoundation).
+        if ((k === GameMap.T_RAIL && map.sub[t] === 0) || (k === GameMap.T_ROAD && map.sub[t] === GameMap.ROAD_SUB_CROSSING)) return map.edgeMaxZ(t, d);
         return map.pieceEdgeZ(t, d, axis);
+    },
+
+    // --- Curves -------------------------------------------------------------------------
+
+    /**
+     * Does the line of `kind` ('rail' | 'road') leave edge e of tile t straight along the chord
+     * direction (vx, vy)? Yes when a corner piece across the edge continues the diagonal, or
+     * nothing joins there at all (a loose end stays straight); no when a straight piece or a
+     * turning corner joins — then the piece bends into it.
+     */
+    continuesDiagonal(map, t, e, vx, vy, kind) {
+        const n = map.neighbour(t, e);
+        if (n < 0) return true;
+        const r = Dir.reverse(e), mr = Track.MID[r];
+        const same = (f) => {
+            const mf = Track.MID[f];
+            return Math.abs(mf[0] - mr[0] - vx) < 1e-6 && Math.abs(mf[1] - mr[1] - vy) < 1e-6;
+        };
+        if (kind === 'rail') {
+            const bits = Track.railBits(map, n);
+            let joined = false;
+            for (let tr = 0; tr < 6; tr++) {
+                if (!(bits & (1 << tr))) continue;
+                const E = Track.EDGES[tr];
+                if (E[0] !== r && E[1] !== r) continue;
+                if (tr >= 2 && same(E[0] === r ? E[1] : E[0])) return true;
+                joined = true;
+            }
+            return !joined;
+        }
+        const bits = Track.roadBits(map, n);
+        if (!(bits & (1 << r))) return true;
+        for (let f = 0; f < 4; f++) if (f !== r && (f ^ r) !== 2 && bits === ((1 << r) | (1 << f)) && same(f)) return true;
+        return false;
+    },
+
+    /**
+     * Centre line of a corner piece of tile t travelled from edge a to edge b (perpendicular):
+     * a cubic Bézier [P0, P1, P2, P3] in tile-local units. Joining straight pieces it is a quarter
+     * circle — a curve; inside a diagonal line of corner pieces it is the straight chord, so the
+     * line looks straight (TTD's diagonal track, and road zig-zags drawn as a diagonal road).
+     */
+    curve(map, t, a, b, kind) {
+        const A = Track.MID[a], B = Track.MID[b];
+        const cx = B[0] - A[0], cy = B[1] - A[1], cl = Math.hypot(cx, cy);
+        const ux = cx / cl, uy = cy / cl;
+        // Tangent at a (into the tile) and at b (out of it).
+        let ta = [0.5 - A[0], 0.5 - A[1]], tb = [B[0] - 0.5, B[1] - 0.5];
+        if (Track.continuesDiagonal(map, t, a, -cx, -cy, kind)) ta = [ux, uy];
+        if (Track.continuesDiagonal(map, t, b, cx, cy, kind)) tb = [ux, uy];
+        const na = Math.hypot(ta[0], ta[1]), nb = Math.hypot(tb[0], tb[1]), k = 0.26;
+        return [A, [A[0] + ta[0] / na * k, A[1] + ta[1] / na * k], [B[0] - tb[0] / nb * k, B[1] - tb[1] / nb * k], B];
+    },
+
+    /** Point and derivative of a Bézier from Track.curve at f. */
+    bezier(P, f) {
+        const u = 1 - f;
+        const x = u * u * u * P[0][0] + 3 * u * u * f * P[1][0] + 3 * u * f * f * P[2][0] + f * f * f * P[3][0];
+        const y = u * u * u * P[0][1] + 3 * u * u * f * P[1][1] + 3 * u * f * f * P[2][1] + f * f * f * P[3][1];
+        const dx = 3 * u * u * (P[1][0] - P[0][0]) + 6 * u * f * (P[2][0] - P[1][0]) + 3 * f * f * (P[3][0] - P[2][0]);
+        const dy = 3 * u * u * (P[1][1] - P[0][1]) + 6 * u * f * (P[2][1] - P[1][1]) + 3 * f * f * (P[3][1] - P[2][1]);
+        return { x, y, dx, dy };
     },
 
     /** Two trackdirs one after another turn by at most 45° (TTD forbids 90° turns). */
@@ -75,6 +141,11 @@ const Track = {
         const len = Track.length(tr), f = Math.max(0, Math.min(1, s / len));
         const axis = Track.AXIS[tr];
         const za = Track.edgeZ(map, t, Track.tdEntry(td), axis), zb = Track.edgeZ(map, t, Track.tdExit(td), axis);
+        if (tr >= 2) {
+            // Corner pieces follow the drawn curve (Track.curve).
+            const c = Track.bezier(Track.curve(map, t, Track.tdEntry(td), Track.tdExit(td), 'rail'), f);
+            return { x: map.tx(t) + c.x, y: map.ty(t) + c.y, z: za + (zb - za) * f, heading: Math.atan2(c.dy, c.dx), grade: (zb - za) / len };
+        }
         const x = map.tx(t) + a[0] + (b[0] - a[0]) * f, y = map.ty(t) + a[1] + (b[1] - a[1]) * f;
         return { x, y, z: za + (zb - za) * f, heading: Math.atan2(b[1] - a[1], b[0] - a[0]), grade: (zb - za) / len };
     },
@@ -170,6 +241,12 @@ const Track = {
         const rin = [-din[1] * 2, din[0] * 2], rout = [-dout[1] * 2, dout[0] * 2];
         const P0 = [pa[0] + rin[0] * off, pa[1] + rin[1] * off];
         const P2 = [pb[0] + rout[0] * off, pb[1] + rout[1] * off];
+        if (a !== b && (a ^ b) !== 2) {
+            // A turn: the road's drawn curve (Track.curve), kept to the right-hand lane.
+            const c = Track.bezier(Track.curve(map, t, a, b, 'road'), f);
+            const l = Math.hypot(c.dx, c.dy) || 1;
+            return { x: x0 + c.x - c.dy / l * off, y: y0 + c.y + c.dx / l * off, heading: Math.atan2(c.dy, c.dx) };
+        }
         let P1;
         if (a === b) {
             // U-turn: loop through the far lane at the tile centre.

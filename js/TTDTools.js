@@ -2,8 +2,8 @@
 // pointer would do (tile outline, cost, catchment area) and applies it on click or at the end of a
 // drag through Commands (TTDCommands.js). TTD's autorail: drag along a row for straight track,
 // diagonally for diagonal track; a click lays the piece nearest the pointer (corner pieces near a
-// corner). Road: TTD's two road tools, one per axis; a drag runs along the axis from the half tile
-// under the press to the half tile under the release (a click lays one half).
+// corner). Road: a drag along a row runs from the half tile under the press to the half tile under
+// the release (TTD's rule; a click lays one half); a slanted drag steps along X and Y with turns.
 
 /** @satisfies {Record<string, any>} */
 const Tools = {
@@ -62,8 +62,8 @@ const Tools = {
         return out;
     },
 
-    /** Road drag of the road tool (TTD's two road tools, locked to axis 0 X or 1 Y): [{ t, bits }]. */
-    roadList(map, a, b, axis) { return Commands.roadDrag(map, a, b, axis); },
+    /** Road drag of the road tool: [{ t, bits }] (Commands.roadPath). */
+    roadList(map, a, b) { return Commands.roadPath(map, a, b); },
 
     /** Tile rectangle covered by a road drag. */
     roadRect(map, list) {
@@ -107,7 +107,7 @@ class Tool {
     label() {
         const o = this.opts;
         const names = {
-            rail: o.remove ? 'Remove track' : 'Build track (drag)', road: (o.remove ? 'Remove road ' : 'Build road ') + (o.axis ? '\\ (NW–SE)' : '/ (NE–SW)') + ' — drag',
+            rail: o.remove ? 'Remove track' : 'Build track (drag)', road: o.remove ? 'Remove road (drag)' : 'Build road (drag; slanted drags zig-zag)',
             raildepot: 'Train depot', roaddepot: 'Road vehicle depot', shipdepot: 'Ship depot', station: 'Railway station',
             bus: 'Bus station', truck: 'Lorry station', signal: o.remove ? 'Remove signals' : 'Signals (click again to change)',
             bridge: 'Bridge (drag head to head)', tunnel: 'Tunnel (click a slope)', airport: 'Airport', dock: 'Dock',
@@ -124,15 +124,16 @@ class Tool {
         switch (this.name) {
             case 'rail': {
                 const path = Tools.railPath(s || p, p);
-                let cost = 0, ok = true;
+                let cost = 0, ok = true, err = '';
                 for (const q of path) {
                     const r = o.remove ? Commands.removeRail(w, map.idx(q.x, q.y), q.track, false) : Commands.buildRail(w, map.idx(q.x, q.y), q.track, o.railType, false);
-                    if (r.ok) cost += r.cost; else ok = false;
+                    if (r.ok) cost += r.cost;
+                    else if (r.err !== 'Already built' && !o.remove) { ok = false; err = r.err; break; }
                 }
-                return { rect: Tools.rect(s || p, p), ok, cost, text: path.length + ' piece(s)' };
+                return { rect: Tools.rect(s || p, p), ok, cost, text: path.length + ' piece(s)' + (err ? ' — stops: ' + err : '') };
             }
             case 'road': {
-                const list = Tools.roadList(map, s || p, p, o.axis);
+                const list = Tools.roadList(map, s || p, p);
                 if (!list.length) return { rect: Tools.rect(p, p), ok: false, cost: 0 };
                 const r = o.remove ? Commands.removeLongRoad(w, list, false) : Commands.buildLongRoad(w, list, false);
                 return { rect: Tools.roadRect(map, list), ok: r.ok, cost: r.cost, text: r.ok ? '' : r.err };
@@ -234,17 +235,21 @@ class Tool {
         switch (this.name) {
             case 'rail': {
                 let first = null;
+                // TTD's CmdBuildRailroadTrack: building stops at the first piece that can't go
+                // (removing skips what isn't there).
                 for (const q of Tools.railPath(s || p, p)) {
                     const tt = map.idx(q.x, q.y);
                     const r = Commands.run(w, ex => o.remove ? Commands.removeRail(w, tt, q.track, ex) : Commands.buildRail(w, tt, q.track, o.railType, ex), true);
-                    if (!r.ok && !first && r.err !== 'Already built') first = r;
-                    if (r.ok) g.spent(r.cost, tt);
+                    if (r.ok) { g.spent(r.cost, tt); continue; }
+                    if (r.err === 'Already built' || o.remove) continue;
+                    first = r;
+                    break;
                 }
                 if (first) g.error(first.err);
                 return;
             }
             case 'road': {
-                const list = Tools.roadList(map, s || p, p, o.axis);
+                const list = Tools.roadList(map, s || p, p);
                 if (!list.length) return;
                 const r = Commands.run(w, ex => o.remove ? Commands.removeLongRoad(w, list, ex) : Commands.buildLongRoad(w, list, ex), true);
                 if (r.ok) g.spent(r.cost, list[list.length - 1].t);

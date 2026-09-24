@@ -136,7 +136,8 @@ claude/           скиллы (skills/<имя>/SKILL.md, в том числе t
 3. Единицы логики — тайлы и уровни высоты; мир px = тайл × `TTD_TILE`, уровень × `TTD_LEVEL`.
 4. HUD — только `UI.get(id)` по записям `UILayout.js`; окна — методы `Gui.v…()`.
 5. Дороги — по `road_cmd.c` TTD: любой кусок дороги (игрока и города) строит `Commands.buildRoad`;
-   склоны и фундаменты — только `GameMap.roadSlopeCheck` / `roadFoundation` / `roadEdgeZ`.
+   склоны и фундаменты — только `GameMap.roadSlopeCheck` / `roadFoundation` / `roadEdgeZ`
+   (рельсы — `railSlopeCheck` / `railFoundation`); кривые углов — `Track.curve` для отрисовки и движения.
    Города растут обходом дорог TTD (`Towns.grow` → `growAtRoad` → `growInTile`), без сетки.
 
 ## Чего в игре нет (пока)

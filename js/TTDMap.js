@@ -196,6 +196,68 @@ class GameMap {
         return [nw, nw, se, se];
     }
 
+    /** Height of the higher corner of edge d of tile t. */
+    edgeMaxZ(t, d) {
+        const e = this.edgeCorners(t, d);
+        return Math.max(e[0], e[1]);
+    }
+
+    // --- Track on slopes (TTD's CheckRailSlope / GetRailFoundation) -------------------------
+
+    /**
+     * Foundation that track `bits` (1 << Track) need on tile t: 0 — none (flat; a straight piece
+     * along an incline; a corner piece lying level along the slope), 1 — levelled, 2 — inclined (a
+     * straight piece on a one-corner or steep slope), 3 — a corner piece on a steep slope,
+     * -1 — not allowed. Every allowed piece has its ends at the higher corner of their edges.
+     */
+    railFoundation(t, bits) {
+        const s = this.slope(t);
+        if (s === 0) return 0;
+        const straight = bits === 1 || bits === 2;
+        if (s & GameMap.SLOPE_STEEP) {
+            if (straight) return 2;
+            const low = s & 15;
+            const ok = low === 11 || low === 14 ? (1 << 4) | (1 << 5) : (1 << 2) | (1 << 3);   // steep W/E: left/right; N/S: upper/lower
+            return (bits & (bits - 1)) === 0 && (bits & ok) ? 3 : -1;
+        }
+        if ((bits & ~GameMap.RAIL_ON_SLOPE[s]) === 0) return 0;
+        if ((bits & ~GameMap.RAIL_ON_FOUNDATION[s]) === 0) return 1;
+        if (straight && (s === GameMap.SLOPE_W || s === GameMap.SLOPE_S || s === GameMap.SLOPE_E || s === GameMap.SLOPE_N)) return 2;
+        return -1;
+    }
+
+    /**
+     * TTD's CheckRailSlope: may track `bits` join the `existing` track of tile t? null — the land
+     * is sloped the wrong way; else { found } — a new foundation is paid for.
+     */
+    railSlopeCheck(t, bits, existing) {
+        const s = this.slope(t);
+        if ((s & GameMap.SLOPE_STEEP) && existing) return null;
+        const f = this.railFoundation(t, bits | existing);
+        if (f < 0) return null;
+        return { found: f > 0 && !existing };
+    }
+
+    /** Corners [N, W, S, E] of the top of a track tile's foundation, or null — natural ground. */
+    railTop(t) {
+        const bits = this.rail[t], f = this.railFoundation(t, bits);
+        if (f === 0) return null;
+        const c = this.corners(t);
+        if (f === 2) {
+            if (bits === 1) { const ne = this.edgeMaxZ(t, Dir.NE), sw = this.edgeMaxZ(t, Dir.SW); return [ne, sw, sw, ne]; }
+            const nw = this.edgeMaxZ(t, Dir.NW), se = this.edgeMaxZ(t, Dir.SE); return [nw, nw, se, se];
+        }
+        if (f === 3) {
+            // A corner piece on a steep slope: the ground under it is raised to the piece's level.
+            let tr = 0;
+            while (!(bits & (1 << tr))) tr++;
+            const z = this.edgeMaxZ(t, Track.EDGES[tr][0]);
+            return c.map(h => Math.max(h, z));
+        }
+        const z = this.tileMaxZ(t);
+        return [z, z, z, z];
+    }
+
     /** Roadside of a road tile (GameMap.RS_*), kept in the low bits of density. */
     roadside(t) { return this.density[t] & 7; }
     setRoadside(t, rs) { this.density[t] = (this.density[t] & ~7) | rs; }
@@ -205,13 +267,6 @@ class GameMap {
 
     /** Height of the flat top of a building/station/depot on the tile (foundation on a slope). */
     buildZ(t) { return this.isFlat(t) ? this.tileMinZ(t) : this.tileMaxZ(t); }
-
-    /** Foundation needed for a piece along axis (or a building: axis -1). */
-    needsFoundation(t, axis) {
-        const s = this.slope(t);
-        if (s === 0) return false;
-        return !(axis >= 0 && this.inclineAxis(t) === axis);
-    }
 
     /**
      * The diagonal the tile is split along — the same for the mesh and for heightAt:
@@ -248,6 +303,9 @@ class GameMap {
         // A tile at a chunk edge also changes the neighbouring chunk's seams (heights, foundations).
         if (x % n === 0 && x > 0) this.dirty.add(((y / n) | 0) * this.chunksX + ((x / n) | 0) - 1);
         if (y % n === 0 && y > 0) this.dirty.add((((y / n) | 0) - 1) * this.chunksX + ((x / n) | 0));
+        // …and a piece's neighbours draw their curves by it (Track.curve).
+        if (x % n === n - 1 && x < this.W - 1) this.dirty.add(((y / n) | 0) * this.chunksX + ((x / n) | 0) + 1);
+        if (y % n === n - 1 && y < this.H - 1) this.dirty.add((((y / n) | 0) + 1) * this.chunksX + ((x / n) | 0));
         this.version++;
     }
 
@@ -380,10 +438,18 @@ class GameMap {
         // Sea level: the given fraction of the corners ends up at level 0.
         const sorted = Array.from(field).sort((a, b) => a - b);
         const cut = sorted[Math.floor(seaFrac * (sorted.length - 1))];
+        // Plains and mountains: the highest `mountains` share of the land (at most 30 %, by the
+        // terrain setting) rises above the plains; the rest is lowland of one or two levels.
+        const mountains = GameMap.MOUNTAIN_SHARE[terrain];
+        const plainsTop = terrain === 0 ? 1 : 2;
+        const land = sorted.filter(v => v > cut);
+        const mCut = land.length ? (land[Math.floor((1 - mountains) * (land.length - 1))] - cut) / Math.max(1e-6, hi - cut) : 1;
         for (let k = 0; k < field.length; k++) {
             const v = (field[k] - cut) / Math.max(1e-6, hi - cut);
-            // A soft curve: plains near the sea, peaks rarer (TTD's TGP has similar distributions).
-            this.hc[k] = v <= 0 ? 0 : IMath.clamp(Math.round(Math.pow(v, 1.35) * maxH + 0.4), 1, maxH);
+            if (v <= 0) { this.hc[k] = 0; continue; }
+            if (v < mCut) { this.hc[k] = 1 + Math.min(plainsTop - 1, Math.floor(v / mCut * plainsTop)); continue; }
+            const f = (v - mCut) / Math.max(1e-6, 1 - mCut);
+            this.hc[k] = IMath.clamp(plainsTop + 1 + Math.round(Math.pow(f, 1.2) * (maxH - plainsTop - 1)), plainsTop + 1, maxH);
         }
         for (let x = 0; x <= W; x++) { this.hc[x] = 0; this.hc[H * cw + x] = 0; }
         for (let y = 0; y <= H; y++) { this.hc[y * cw] = 0; this.hc[y * cw + W] = 0; }
@@ -599,6 +665,10 @@ GameMap.ROAD_ALL = 15;
 // with a levelled foundation. NE 1, SE 2, SW 4, NW 8.
 GameMap.ROAD_ON_SLOPE = [15, 0, 0, 5, 0, 0, 10, 0, 0, 10, 0, 0, 5, 0, 0];
 GameMap.ROAD_ON_FOUNDATION = [0, 4 | 8, 4 | 2, 10 | 4, 2 | 1, 15, 5 | 2, 15, 8 | 1, 5 | 8, 15, 15, 10 | 1, 15, 15];
+// TTD's _valid_tileh_slopes (rail), by slope: track bits (1 << Track: X 1, Y 2, UPPER 4, LOWER 8,
+// LEFT 16, RIGHT 32) allowed on the bare slope, and with a levelled foundation.
+GameMap.RAIL_ON_SLOPE = [63, 32, 4, 1, 16, 0, 2, 8, 8, 2, 0, 16, 1, 4, 32];
+GameMap.RAIL_ON_FOUNDATION = [0, 16, 8, 2 | 8 | 16, 32, 63, 1 | 8 | 32, 63, 4, 1 | 4 | 16, 63, 63, 2 | 4 | 32, 63, 63];
 // Roadside (TTD's Roadside): what lines a road; the tile loop sets it by the town zone.
 GameMap.RS_BARREN = 0;
 GameMap.RS_GRASS = 1;
@@ -607,4 +677,6 @@ GameMap.RS_LIGHTS = 3;
 GameMap.RS_TREES = 4;
 
 GameMap.MAX_HEIGHT = 15;
+/** Share of the land corners raised above the plains, by terrain setting (very flat … mountainous): with the slopes around them, mountains cover at most 30 % of the land tiles. */
+GameMap.MOUNTAIN_SHARE = [0.04, 0.09, 0.15, 0.22];
 GameMap.CHUNK = 16;        // tiles per renderer chunk side

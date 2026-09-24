@@ -16,7 +16,8 @@ class World {
         this.climate = s.climate;
         const n = 1 << s.mapLog2;
         this.map = new GameMap(n, n);
-        this.seed = s.seed >>> 0 || ((Math.random() * 0xffffffff) >>> 0);
+        // Seed 0: a new map every game (the clock is mixed in, so two games never share a map).
+        this.seed = s.seed >>> 0 || (((Math.random() * 0xffffffff) ^ Date.now()) >>> 0) || 1;
         this.rng = new Rng(this.seed);
         this.ticks = 0;
         this.dayTick = 0;

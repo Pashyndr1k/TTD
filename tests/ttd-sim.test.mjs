@@ -10,7 +10,7 @@ const b64 = { btoa: s => Buffer.from(s, 'binary').toString('base64'), atob: s =>
 const page = loadScripts(SIM_FILES, { performance, ...b64 });
 const World = page.get('World'), GameMap = page.get('GameMap'), Commands = page.get('Commands'), Vehicles = page.get('Vehicles');
 const Towns = page.get('Towns'), Track = page.get('Track'), Company = page.get('Company'), Calendar = page.get('Calendar');
-const Town = page.get('Town');
+const Town = page.get('Town'), Dir = page.get('Dir');
 
 function flatWorld(opts) {
     const w = new World(Object.assign({ seed: 99, mapLog2: 6, climate: 0, startYear: 1950, towns: 0, industries: 0, inflation: 0, breakdowns: 0 }, opts || {}));
@@ -335,5 +335,58 @@ test('города строят дороги по правилам TTD: без �
             if (n >= 0 && (m.type[n] === GameMap.T_ROAD || m.type[n] === GameMap.T_HOUSE || m.type[n] === GameMap.T_STATION)) near = true;
         }
         assert.ok(near, 'house by a road');
+    }
+});
+
+test('рельсы на склонах: наклонный фундамент вместо ступенек, ровный диагональный кусок без фундамента', () => {
+    // (20,20): W raised. X track there climbs on an inclined foundation; the RIGHT piece (near the
+    // low E corner) lies level and needs none; LEFT joins with a levelled foundation.
+    const w = hillyWorld([[21, 20], [31, 20]]), m = w.map;
+    const t = idx(w, 20, 20), rail = w.price('buildRail'), found = w.price('terraform'), clear = w.price('clearGrass');
+    let r = must(Commands.run(w, ex => Commands.buildRail(w, t, Track.X, 0, ex), true));
+    assert.equal(r.cost, rail + found + clear);
+    assert.deepEqual([Track.railEdgeZ(m, t, Track.X, 0), Track.railEdgeZ(m, t, Track.X, 2)], [1, 2], 'a ramp, not a step');
+    assert.ok(!Commands.buildRail(w, t, Track.Y, 0, false).ok, 'no second piece on an inclined foundation');
+    const u = idx(w, 30, 20);
+    r = must(Commands.run(w, ex => Commands.buildRail(w, u, Track.RIGHT, 0, ex), true));
+    assert.equal(r.cost, rail + clear, 'level along the slope: no foundation');
+    assert.ok(!Commands.buildRail(w, u, Track.LEFT, 0, false).ok, 'the other diagonal would need another foundation');
+});
+
+test('кривые: угловой кусок продолжает соседние без скачка, дорога по диагонали — зигзаг поворотов', () => {
+    const w = flatWorld(), m = w.map;
+    // A curve: X track, then the corner piece, then Y track.
+    for (let x = 10; x < 14; x++) must(Commands.run(w, ex => Commands.buildRail(w, idx(w, x, 10), Track.X, 0, ex), true));
+    must(Commands.run(w, ex => Commands.buildRail(w, idx(w, 14, 10), Track.RIGHT, 0, ex), true));
+    for (let y = 11; y < 14; y++) must(Commands.run(w, ex => Commands.buildRail(w, idx(w, 14, y), Track.Y, 0, ex), true));
+    const c = idx(w, 14, 10), td = Track.tdFrom(Track.RIGHT, Dir.NE);
+    const p0 = Track.pointOn(m, c, td, 0), p1 = Track.pointOn(m, c, td, Track.length(Track.RIGHT));
+    assert.ok(Math.hypot(p0.x - 14, p0.y - 10.5) < 1e-9 && Math.hypot(p1.x - 14.5, p1.y - 11) < 1e-9, 'ends at the edge midpoints');
+    assert.ok(Math.abs(p0.heading - 0) < 1e-6 && Math.abs(p1.heading - Math.PI / 2) < 1e-6, 'tangent to the straights: a curve');
+    // A 45° road drag: a zig-zag of turns from end to end, joined to the road it starts at.
+    must(Commands.run(w, ex => Commands.buildRoad(w, idx(w, 29, 30), 5, ex), true));
+    const list = Commands.roadPath(m, { fx: 30.2, fy: 30.5 }, { fx: 34.5, fy: 34.5 });
+    const turns = list.filter(q => q.bits === 3 || q.bits === 6 || q.bits === 12 || q.bits === 9).length;
+    assert.ok(turns >= list.length - 2, 'turns all the way');
+    assert.ok(list[0].bits & (1 << Dir.NE), 'the start joins the road beside it');
+    must(Commands.run(w, ex => Commands.buildLongRoad(w, list, ex), true));
+    let n = 0;
+    for (let i = 0; i + 1 < list.length; i++) {
+        const d = [0, 1, 2, 3].find(k => m.neighbour(list[i].t, k) === list[i + 1].t);
+        if (Track.roadConnects(m, list[i].t, d) === list[i + 1].t) n++;
+    }
+    assert.equal(n, list.length - 1, 'a road vehicle can drive it end to end');
+});
+
+test('карта: каждая новая игра — новая карта, горы не больше 30 % суши', () => {
+    const a = new World({ mapLog2: 6, climate: 0 }), b = new World({ mapLog2: 6, climate: 0 });
+    assert.notEqual(a.seed, b.seed);
+    for (const seed of [1, 2, 3, 4]) {
+        const w = new World({ seed, mapLog2: 7, climate: 1, terrain: 3 });
+        w.map.generate({ seed, climate: 1, terrain: 3, sea: 1 });
+        const m = w.map;
+        let land = 0, high = 0;
+        for (let t = 0; t < m.size; t++) { if (m.type[t] === GameMap.T_WATER) continue; land++; if (m.tileMaxZ(t) > 2) high++; }
+        assert.ok(high / land <= 0.3, 'mountains ' + (high / land * 100).toFixed(1) + '% (seed ' + seed + ')');
     }
 });

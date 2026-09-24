@@ -119,8 +119,7 @@ class Gui {
                 [railNames[rt], () => { g.railType = (g.railType + 1) % 4; if (g.tool) g.tool.opts.railType = g.railType; this.renderBar(); }],
             ];
             case 'road': return [
-                [(t && t.name === 'road' && t.opts.axis === 0 ? '• ' : '') + 'Road /', () => t && t.name === 'road' && t.opts.axis === 0 ? g.setTool(null) : g.setTool('road', { axis: 0 })],
-                [(t && t.name === 'road' && t.opts.axis === 1 ? '• ' : '') + 'Road \\', () => t && t.name === 'road' && t.opts.axis === 1 ? g.setTool(null) : g.setTool('road', { axis: 1 })],
+                [on('road') + 'Road', () => g.setTool('road')],
                 [on('roaddepot') + 'Depot', () => g.setTool('roaddepot')],
                 [on('bus') + 'Bus stop', () => g.setTool('bus')],
                 [on('truck') + 'Lorry stop', () => g.setTool('truck')],
@@ -608,8 +607,8 @@ class Gui {
                 '4. In the train window: Go To…, click station A, Go To…,',
                 '   click station B, then Start.',
                 'Road vehicles: road + bus/lorry stops + road depot.',
-                'Roads: "Road /" and "Road \\" each build along one direction;',
-                '   drag from half tile to half tile, a click builds a half.',
+                'Roads: drag from half tile to half tile, a click builds a half;',
+                '   a slanted drag zig-zags with turns (a diagonal road).',
                 '   Lead a half road into a depot entrance.',
                 'Income: distance x amount x cargo rate, less for slow delivery.',
                 'Signals split the line into blocks: one train per block.',
@@ -665,7 +664,8 @@ class Gui {
     showNewGame(first) {
         this.ng = Object.assign({}, this.world ? this.world.settings : World.defaultSettings());
         this.ng.seed = 0;
-        this.text('ngSub', first ? 'Settings default to your openttd.cfg (TTD.zip). Click an option to change it.' : 'New game');
+        this.text('ngSub', (first ? 'Settings default to your openttd.cfg (TTD.zip). Click an option to change it.' : 'New game') +
+            (this.world ? '   This map: #' + this.world.seed + '; Start makes a new one.' : ''));
         this.show('ngResume', !!this.world);
         this.text('ngResume', first ? 'Play this map' : 'Back to game');
         this.show('ngLoad', !!Store.get(Game.SAVE_KEY));

@@ -133,15 +133,6 @@ const Commands = {
 
     // --- Rail --------------------------------------------------------------------------------
 
-    /** Does the slope allow a piece along `axis` (-1 diagonal) — and does it need a foundation? */
-    slopeFor(world, t, axis) {
-        const map = world.map;
-        const s = map.slope(t);
-        if (s === 0) return { ok: true, found: false };
-        if (axis >= 0 && map.inclineAxis(t) === axis) return { ok: true, found: false };
-        return { ok: true, found: true };
-    },
-
     buildRail(world, t, track, railType, exec) {
         const map = world.map;
         if (!map.valid(map.tx(t), map.ty(t))) return Commands.fail('Off edge of map');
@@ -153,9 +144,8 @@ const Commands = {
             if (map.owner[t] !== 0) return Commands.fail('Owned by another company');
             if (map.rail[t] & bit) return Commands.fail('Already built');
             if (map.railType[t] !== railType) return Commands.fail('Must convert the rail type first');
-            // Straight pieces on inclines can't share the tile with diagonal ones.
-            const sl = Commands.slopeFor(world, t, Track.AXIS[track]);
-            if (map.inclineAxis(t) >= 0 && (Track.AXIS[track] !== map.inclineAxis(t) || map.rail[t])) return Commands.fail('Land sloped in wrong direction');
+            if (!map.railSlopeCheck(t, bit, map.rail[t])) return Commands.fail('Land sloped in wrong direction');
+            if (Commands.vehicleOn(world, t)) return Commands.fail('Train in the way');
             if (exec) { map.rail[t] |= bit; map.signals[t] &= ~(3 << (track * 2)); map.markDirty(t); world.railVersion++; }
             return Commands.ok(cost);
         }
@@ -179,8 +169,8 @@ const Commands = {
         }
         if (!map.isClearable(t)) return Commands.fail(Commands.occupiedMsg(world, t));
         if (map.over[t] >= 0 && world.wormholes[map.over[t]] && map.tileMaxZ(t) + 1 >= world.wormholes[map.over[t]].z) return Commands.fail('Bridge in the way');
-        const sl = Commands.slopeFor(world, t, Track.AXIS[track]);
-        if (!sl.ok) return Commands.fail('Land sloped in wrong direction');
+        const sl = map.railSlopeCheck(t, bit, 0);
+        if (!sl) return Commands.fail('Land sloped in wrong direction');
         if (sl.found) cost += world.price('terraform');
         cost += Commands.clearCost(world, t);
         if (exec) {
@@ -404,6 +394,68 @@ const Commands = {
             const x = axis === 0 ? i : fixed, y = axis === 0 ? fixed : i;
             if (map.inside(x, y)) out.push({ t: map.idx(x, y), bits });
         }
+        return out;
+    },
+
+    /**
+     * Road bits of a drag with the road tool, a and b tile-space points ({ fx, fy }):
+     * - along a row or a column: TTD's half-tile drag (roadDrag);
+     * - otherwise a chain of tiles stepping along X and Y as close to the straight line as it
+     *   can: straight pieces and turns (a 45° drag gives TTD's zig-zag of turns, drawn as a
+     *   diagonal road);
+     * - a click builds the half toward the nearest edge.
+     * The ends follow TTD's half-tile rule, and an end half is added anyway where it meets a
+     * road that points into it, so a drag joins the road it starts or ends at.
+     */
+    roadPath(map, a, b) {
+        const ax = Math.floor(a.fx), ay = Math.floor(a.fy), bx = Math.floor(b.fx), by = Math.floor(b.fy);
+        if (!map.inside(ax, ay) || !map.inside(bx, by)) return [];
+        let out;
+        if (ax === bx && ay === by && Math.hypot(b.fx - a.fx, b.fy - a.fy) < 0.5) {
+            const u = a.fx - ax, v = a.fy - ay;
+            const d = [[u, Dir.NE], [1 - u, Dir.SW], [v, Dir.NW], [1 - v, Dir.SE]].sort((p, q) => p[0] - q[0])[0][1];
+            return [{ t: map.idx(ax, ay), bits: 1 << d }];
+        }
+        if (ay === by && ax !== bx) out = Commands.roadDrag(map, a, b, 0);
+        else if (ax === bx && ay !== by) out = Commands.roadDrag(map, a, b, 1);
+        else {
+            // Tiles of a 4-connected line from a to b.
+            const tiles = [[ax, ay]];
+            const nx = Math.abs(bx - ax), ny = Math.abs(by - ay), sx = Math.sign(bx - ax), sy = Math.sign(by - ay);
+            let ix = 0, iy = 0;
+            while ((ix < nx || iy < ny) && tiles.length < 512) {
+                if (iy >= ny || (ix < nx && (ix + 0.5) / nx < (iy + 0.5) / ny)) ix++; else iy++;
+                tiles.push([ax + ix * sx, ay + iy * sy]);
+            }
+            const dirTo = (p, q) => q[0] > p[0] ? Dir.SW : q[0] < p[0] ? Dir.NE : q[1] > p[1] ? Dir.SE : Dir.NW;
+            // Is point (fx, fy) in tile p on the side of edge d?
+            const onSide = (p, pt, d) => {
+                const u = pt.fx - p[0], v = pt.fy - p[1];
+                return d === Dir.NE ? u < 0.5 : d === Dir.SW ? u >= 0.5 : d === Dir.NW ? v < 0.5 : v >= 0.5;
+            };
+            out = tiles.map((p, i) => {
+                let bits = 0;
+                if (i > 0) bits |= 1 << Dir.reverse(dirTo(tiles[i - 1], p));
+                if (i < tiles.length - 1) bits |= 1 << dirTo(p, tiles[i + 1]);
+                return { t: map.idx(p[0], p[1]), bits };
+            });
+            const first = tiles[0], last = tiles[tiles.length - 1];
+            const back = Dir.reverse(dirTo(first, tiles[1])), far = dirTo(tiles[tiles.length - 2], last);
+            if (onSide(first, a, back)) out[0].bits |= 1 << back;
+            if (onSide(last, b, far)) out[out.length - 1].bits |= 1 << far;
+        }
+        // Ends meet the road they touch: behind the start and beyond the end (along the drag's X
+        // and Y directions), a road pointing at the end tile gets the half that joins it.
+        const back = [], fwd = [];
+        if (bx > ax) { back.push(Dir.NE); fwd.push(Dir.SW); } else if (bx < ax) { back.push(Dir.SW); fwd.push(Dir.NE); }
+        if (by > ay) { back.push(Dir.NW); fwd.push(Dir.SE); } else if (by < ay) { back.push(Dir.SE); fwd.push(Dir.NW); }
+        const join = (q, dirs) => {
+            for (const d of dirs) {
+                const n = map.neighbour(q.t, d);
+                if (n >= 0 && (Track.roadBits(map, n) & (1 << Dir.reverse(d)))) q.bits |= 1 << d;
+            }
+        };
+        if (out.length) { join(out[0], back); join(out[out.length - 1], fwd); }
         return out;
     },
 
