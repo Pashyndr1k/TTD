@@ -23,6 +23,8 @@ function makeCamera(opts = {}) {
   const terrain = { heightAt: opts.heightAt || (() => 0), outerRing: 2400, hMin: 0 };
   const cam = new CameraController(view, { terrain, bounds: { w: 2048, h: 2048 }, free: !!opts.free });
   cam.c.limits = opts.limits ? 1 : 0;   // the test does not depend on the CAMERA_LIMITS value in Constants.js
+  cam.zoom = cam.zoomTarget = 1;        // nor on the starting zoom (CAMERA_ZOOM): the flight step is measured at zoom 1
+  cam.azimuth = -Math.PI / 2;           // nor on the heading (CAMERA_AZIMUTH_DEG): north up, D strafes along +x
   return { cam, liftMax: page.get('CAMERA_LIFT_MAX'), pitchMin: page.get('CAMERA_ORBIT_PITCH_MIN_DEG') };
 }
 

@@ -11,7 +11,7 @@
 //   colors — '#rrggbb', '' — none; visible: 0 — hidden until the game calls show().
 //   Records go in drawing order: later — on top.
 const UI_LAYOUT = [
-    { id: 'toolbar', kind: 'panel', anchor: 'top-left', stretch: 'h', x: 0, y: 0, w: 1280, h: 34, fill: '#23272e', border: '', radius: 0, alpha: 0.95, visible: 1 },
+    { id: 'toolbar', kind: 'panel', anchor: 'top-left', x: 0, y: 0, w: 1280, h: 34, stretch: 'h', fill: '#23272e', border: '', radius: 0, alpha: 0.95, visible: 1 },
     { id: 'tb_pause', kind: 'button', anchor: 'top-left', parent: 'toolbar', x: 4, y: 3, w: 40, h: 28, text: "||", fontSize: 14, color: '#ffffff', fill: '#4a5a6e', border: '', radius: 4, alpha: 1, visible: 1 },
     { id: 'tb_ff', kind: 'button', anchor: 'top-left', parent: 'toolbar', x: 46, y: 3, w: 40, h: 28, text: ">>", fontSize: 14, color: '#ffffff', fill: '#4a5a6e', border: '', radius: 4, alpha: 1, visible: 1 },
     { id: 'tb_menu', kind: 'button', anchor: 'top-left', parent: 'toolbar', x: 90, y: 3, w: 52, h: 28, text: "Game", fontSize: 11, color: '#ffffff', fill: '#6e5a3a', border: '', radius: 4, alpha: 1, visible: 1 },
@@ -47,7 +47,7 @@ const UI_LAYOUT = [
     { id: 'wl', kind: 'button', anchor: 'top-left', parent: 'win', x: 8, y: 268, w: 376, h: 22, text: "Row", fontSize: 11, color: '#e8e8e8', fill: '#353b45', border: '', radius: 3, alpha: 1, visible: 0 },
     { id: 'winInfo', kind: 'text', anchor: 'top-left', parent: 'win', x: 14, y: 330, text: "", fontSize: 12, color: '#d8d8c8', shadow: '', alpha: 1, visible: 1 },
     { id: 'wb', kind: 'button', anchor: 'bottom-left', parent: 'win', x: 8, y: 8, w: 90, h: 26, text: "Action", fontSize: 11, color: '#ffffff', fill: '#4a5a6e', border: '', radius: 4, alpha: 1, visible: 0 },
-    { id: 'status', kind: 'panel', anchor: 'bottom-left', stretch: 'h', x: 0, y: 0, w: 1280, h: 26, fill: '#23272e', border: '', radius: 0, alpha: 0.95, visible: 1 },
+    { id: 'status', kind: 'panel', anchor: 'bottom-left', x: 0, y: 0, w: 1280, h: 26, stretch: 'h', fill: '#23272e', border: '', radius: 0, alpha: 0.95, visible: 1 },
     { id: 'st_date', kind: 'text', anchor: 'middle-left', parent: 'status', x: 10, y: 0, text: "1st Jan 1941", fontSize: 13, color: '#f0e6c8', shadow: '', alpha: 1, visible: 1 },
     { id: 'st_news', kind: 'text', anchor: 'middle-center', parent: 'status', x: 0, y: 0, text: "", fontSize: 12, color: '#e0e0e0', shadow: '', alpha: 1, visible: 1 },
     { id: 'st_money', kind: 'text', anchor: 'middle-right', parent: 'status', x: 10, y: 0, text: "$0", fontSize: 13, color: '#9ae07a', shadow: '', alpha: 1, visible: 1 },
@@ -62,8 +62,8 @@ const UI_LAYOUT = [
     { id: 'newsText', kind: 'text', anchor: 'top-left', parent: 'newsBox', x: 12, y: 24, text: "", fontSize: 14, color: '#202020', shadow: '', alpha: 1, visible: 1 },
     { id: 'newsGo', kind: 'button', anchor: 'bottom-right', parent: 'newsBox', x: 76, y: 6, w: 62, h: 22, text: "Go to", fontSize: 11, color: '#ffffff', fill: '#6a5a3a', border: '', radius: 3, alpha: 1, visible: 1 },
     { id: 'newsClose', kind: 'button', anchor: 'bottom-right', parent: 'newsBox', x: 8, y: 6, w: 62, h: 22, text: "Close", fontSize: 11, color: '#ffffff', fill: '#6a5a3a', border: '', radius: 3, alpha: 1, visible: 1 },
-    { id: 'ngDim', kind: 'panel', anchor: 'top-left', stretch: 'both', x: 0, y: 0, w: 1280, h: 720, fill: '', border: '', radius: 0, alpha: 1, visible: 0 },
-    { id: 'ngShade', kind: 'panel', anchor: 'top-left', parent: 'ngDim', stretch: 'both', x: 0, y: 0, w: 1280, h: 720, fill: '#000000', border: '', radius: 0, alpha: 0.55, visible: 1 },
+    { id: 'ngDim', kind: 'panel', anchor: 'top-left', x: 0, y: 0, w: 1280, h: 720, stretch: 'both', fill: '', border: '', radius: 0, alpha: 1, visible: 0 },
+    { id: 'ngShade', kind: 'panel', anchor: 'top-left', parent: 'ngDim', x: 0, y: 0, w: 1280, h: 720, stretch: 'both', fill: '#000000', border: '', radius: 0, alpha: 0.55, visible: 1 },
     { id: 'ngPanel', kind: 'panel', anchor: 'middle-center', parent: 'ngDim', x: 0, y: 0, w: 540, h: 600, fill: '#262a31', border: '#8a7a5a', radius: 8, alpha: 1, visible: 1 },
     { id: 'ngTitle', kind: 'text', anchor: 'top-center', parent: 'ngPanel', x: 0, y: 14, text: "Transport Tycoon 3D", fontSize: 24, color: '#f0e6c8', shadow: '#000000', alpha: 1, visible: 1 },
     { id: 'ngSub', kind: 'text', anchor: 'top-center', parent: 'ngPanel', x: 0, y: 48, text: "New game", fontSize: 12, color: '#c8c0a8', shadow: '', alpha: 1, visible: 1 },

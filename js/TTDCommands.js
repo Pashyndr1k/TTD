@@ -359,7 +359,15 @@ const Commands = {
                 map.type[t] = kind === 'rail' ? GameMap.T_RAIL : GameMap.T_ROAD;
                 map.sub[t] = kind === 'rail' ? GameMap.RAIL_SUB_DEPOT : GameMap.ROAD_SUB_DEPOT;
                 if (kind === 'rail') { map.rail[t] = 1 << Track.axisTrack(Dir.axis(dir)); map.railType[t] = railType || 0; world.railVersion++; }
-                else map.road[t] = 1 << dir;
+                else {
+                    map.road[t] = 1 << dir;
+                    // Join the road in front of the entrance (straight roads only, like a drag would).
+                    const n = map.neighbour(t, dir);
+                    if (n >= 0 && map.type[n] === GameMap.T_ROAD && map.sub[n] === 0) {
+                        map.road[n] |= 1 << Dir.reverse(dir);
+                        map.markDirty(n);
+                    }
+                }
             }
             map.obj[t] = id;
             map.owner[t] = 0;
@@ -627,14 +635,19 @@ const Commands = {
         if (L - 2 > spec.maxLen || L - 2 < spec.minLen) return Commands.fail('Bridge too long or too short for this type');
         const axis = Dir.axis(dir);
         // Heads: flat or rising toward the bridge; the deck is one level above a flat head.
+        // A head may replace a straight piece of the player's road or track along the bridge.
+        const headFree = (t) => map.isClearable(t) ||
+            (map.type[t] === GameMap.T_ROAD && map.sub[t] === 0 && map.roadOwner[t] !== GameMap.OWNER_TOWN && (map.road[t] & ~(axis === 0 ? 5 : 10)) === 0 && transport === 'road') ||
+            (map.type[t] === GameMap.T_RAIL && map.sub[t] === 0 && map.owner[t] === 0 && map.rail[t] === (1 << Track.axisTrack(axis)) && !map.signals[t] && transport === 'rail');
         const deck = (t, inner) => {
-            if (!map.isClearable(t)) return -1;
+            if (!headFree(t)) return -1;
             if (map.isFlat(t)) return map.tileMinZ(t) + 1;
+            if (map.slope(t) & GameMap.SLOPE_STEEP) return -1;
             if (map.inclineAxis(t) === axis) {
                 const ei = map.edgeCorners(t, inner), eo = map.edgeCorners(t, Dir.reverse(inner));
                 if (ei[0] > eo[0]) return ei[0];
             }
-            return -1;
+            return map.tileMaxZ(t) + 1;   // on a foundation, like a flat head at the top of the slope
         };
         const za = deck(a, dir), zb = deck(b, Dir.reverse(dir));
         if (za < 0 || zb < 0) return Commands.fail('Unsuitable site for the bridge head');
@@ -654,6 +667,7 @@ const Commands = {
         const id = world.wormholes.length;
         world.wormholes.push({ id, a, b, dir, kind: 'bridge', type, z: za, rail: transport === 'rail', owner: 0 });
         for (const [t, inner] of [[a, dir], [b, Dir.reverse(dir)]]) {
+            if (map.type[t] === GameMap.T_ROAD || map.type[t] === GameMap.T_RAIL) map.setClear(t, GameMap.G_GRASS);
             Commands.clearForBuild(world, t, true);
             map.type[t] = GameMap.T_TUNBRIDGE;
             map.sub[t] = 1;
