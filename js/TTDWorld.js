@@ -39,7 +39,7 @@ class World {
         this.subsidies = [];
         this.news = [];
         this.newsSeq = 0;
-        this.economy = { inflPrices: 1, inflPay: 1, interest: s.interest, recession: 0, nextRecession: 0, inflYears: 0 };
+        this.economy = { inflPrices: 1, inflPay: 1, interest: s.interest, recession: 0, nextRecession: this.rng.range(168, 423), inflYears: 0 };
         this.railOcc = new Map();
         this.railVersion = 0;
         this.blockCache = new Map();
@@ -243,7 +243,6 @@ class World {
         player.money = 100000;
         player.loan = Math.min(100000, this.maxLoan);
         this.companies.push(player);
-        this.economy.nextRecession = this.rng.range(168, 423);
         this.acceptanceDirty = true;
         this.addNews('Welcome to ' + TTDData.CLIMATE_NAMES[this.climate] + ' — ' + this.towns.length + ' towns, ' +
             this.industries.filter(Boolean).length + ' industries. ' + s.companyName + ' is open for business.', { kind: 'company' });

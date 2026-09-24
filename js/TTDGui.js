@@ -299,7 +299,7 @@ class Gui {
         const o = v.orders[sel];
         const acts = [
             [v.stopped ? 'Start' : 'Stop', () => { v.stopped = !v.stopped; if (!v.stopped && !v.orders.length) g.error('This vehicle has no orders'); }],
-            ['Go To…', () => { g.orderVehicle = v; g.setTool('order'); }],
+            ['Go To…', () => { g.orderVehicle = v; g.setTool('order', {}); }],
             ['Delete', () => { if (o) { v.orders.splice(sel, 1); if (v.cur >= v.orders.length) v.cur = 0; v.onOrderChanged(); this.win.sel = -1; } }],
             ['Skip', () => { v.nextOrder(); }],
             ['Full load', () => { if (o && o.kind === 'station') { o.full = !o.full; if (o.full) o.unload = o.transfer = false; } }],
@@ -659,7 +659,8 @@ class Gui {
         this.ng = Object.assign({}, this.world ? this.world.settings : World.defaultSettings());
         this.ng.seed = 0;
         this.text('ngSub', first ? 'Settings default to your openttd.cfg (TTD.zip). Click an option to change it.' : 'New game');
-        this.show('ngResume', !!this.world && !first);
+        this.show('ngResume', !!this.world);
+        this.text('ngResume', first ? 'Play this map' : 'Back to game');
         this.show('ngLoad', !!Store.get(Game.SAVE_KEY));
         this.renderNewGame();
         this.show('ngDim', true);

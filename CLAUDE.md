@@ -1,16 +1,17 @@
-# ArcEngine — набор для 3D-игр в браузере
+# Transport Tycoon 3D — ремейк Transport Tycoon Deluxe на ArcEngine
 
-Основа для 3D-игр в браузере, заточенная под работу с Claude Code: ванильный
-JS + Babylon.js 9.26 (`libs/babylon.js`, локально), ноль npm-зависимостей, никакой
-сборки — классические `<script>` и глобалы. Игра при запуске показывает локацию:
-земля с холмами, небо, свет, тени, toon-шейдер, камера, объекты из `Objects.js` (модели FBX и
-GLB из `assets/models/`; GLB — со скелетом и клипами анимации), HUD из `UILayout.js` и пример
-игры `Game.js`. Рядом — веб-редактор (интерфейс EN/RU): тот же мир, камеры
-«свободная/игровая» с ползунком скорости полёта, toon вкл/выкл, вкладка Global Settings (все глобальные настройки,
-сохранение в `Constants.js`), вкладка Sound (константы звука и файлы `assets/sounds`), вкладка
-Objects (импорт FBX/GLB, гизмо, свойства объектов, анимация — вращение части или клип, тег,
-скрытие, звук; сохранение в `Objects.js`) и вкладка UI (раскладка игрового интерфейса: драг и
-ресайз поверх вида, вложенность и растяжение, сохранение в `UILayout.js`).
+Полная 3D-копия Transport Tycoon Deluxe (правила — OpenTTD 0.5.3, эпоха `TTD.zip` пользователя), собранная
+на наборе ArcEngine (xaidan777/ArcEngine): ванильный JS + Babylon.js 9.26 (`libs/babylon.js`, локально),
+ноль npm-зависимостей, никакой сборки — классические `<script>` и глобалы. Игра: тайловая карта с
+высотами и склонами TTD, города (каталанские названия), предприятия умеренного и субтропического
+климата, железные и автомобильные дороги, станции, депо, сигналы, мосты, туннели, аэропорты, доки,
+поезда/автобусы/грузовики/корабли/самолёты, экономика TTD (оплата груза, рейтинги станций, кредит,
+инфляция, субсидии, рейтинг компании), HUD из `UILayout.js`. Настройки новой игры по умолчанию —
+из `openttd.cfg` в `TTD.zip`. Все формулы и что упрощено — `docs/TTD-mechanics.md`.
+
+Рядом — веб-редактор набора (интерфейс EN/RU): вкладка Global Settings (все константы, в том числе
+группы `TTD: …`, сохранение в `Constants.js`), вкладка UI (раскладка HUD игры: драг и ресайз поверх
+вида, сохранение в `UILayout.js`), Sound и Objects (объекты локации набора; игра TTD их не использует).
 
 ## Скиллы — читать до правки кода
 
@@ -26,6 +27,7 @@ Objects (импорт FBX/GLB, гизмо, свойства объектов, а
 | `tools/`, `tests/`, ассеты, новый скрипт, архив, проверка типов и ошибки tsc | `claude/skills/build/SKILL.md` |
 | своя геометрия (сетка из вершин, порт генератора, импорт glTF), материал с картой нормалей, новый источник света, свой шейдер, thin instances и процедурная расстановка; «сетка вывернута», «свет не с той стороны», пропал свет или меш | `claude/skills/render-conventions/SKILL.md` |
 | проверка правки глазами и числами: панель браузера, `Debug3D` (удержание вида, кадры без rAF, замер, линтер сцены, отладочные режимы), замер цены кадра, воспроизведение состояния пользователя | `claude/skills/verify/SKILL.md` |
+| ЛЮБАЯ правка игры TTD: `js/TTD*.js`, `js/Game.js`, правила, цены, транспорт, предприятия, дома, инструменты стройки, окна HUD, команды, сохранения | `claude/skills/ttd/SKILL.md` |
 
 ## Запуск и сборка
 
@@ -88,80 +90,54 @@ Git: что не едет в репозиторий — `.gitignore` (`.claude/`
 
 ```
 index.html        холст #world3d, экран загрузки, порядок скриптов (js/…)
-js/               код игры — классические скрипты:
-  Constants.js    Store, IS_MOBILE, LOCATION_*, TERRAIN_*, CAMERA_*, WORLD3D_* (грузится первым)
-  Objects.js      LOCATION_OBJECTS — объекты локации (модель .fbx/.glb, вид, x/y/h, rot [x,y,z], scale [x,y,z],
-                  anim — вращение части, clip — клип GLB, tag — имя группы, hidden — скрыт до показа,
-                  sound — звук на месте объекта); пишет редактор
-  UILayout.js     UI_LAYOUT — раскладка интерфейса игры (id, вид, якорь, x/y, размеры, цвета,
-                  parent — внутри какого элемента, stretch — растянуть по оси); пишет редактор
-  Sound3D.js      звук: эффекты, музыка, звук на карте (слышно оттуда, где камера; область слышимости —
-                  шар falloffMin/falloffMax), каналы и громкости AUDIO_*
-  World3D.js      движок: init/renderFrame, View3D (камера, свет, тени, проекции), cfg(),
-                  toon-шейдер ArcToonPlugin, контур рёбер (у всех объектов, у скелетных — по костям,
-                  InkSkin), обводка силуэта, addObject
-  Terrain3D.js    земля: поле высот из шума, сетка + кольцо за краем, heightAt/tiltAt
-  Model3D.js      модели: бинарный FBX -> меши Babylon (load с кэшем, build, dispose); 1 см = 1 px; .glb уходит в Gltf3D
-  Gltf3D.js       модели glTF/GLB: скелет, текстуры, PBR -> StandardMaterial под toon; Clips3D — клипы анимации
-                  (Model3D.clips(root).play('run') с плавным переходом)
-  Instances3D.js  много копий одной модели одним draw call (thin instances): World3D.addInstances ->
-                  set/setAll/flush/dispose; тени, toon, контур и обводка — как у addObject
-  Location3D.js   локация: View3D + Terrain3D + текстура земли (LOCATION_GROUND) + объекты (addObject/placeObject,
-                  findByTag/setHidden, update(dt) — вращение частей по anim, клип по clip, звук по sound)
-  CameraControl.js CameraController: цель/азимут/наклон/зум, мышь, клавиши, тач; игровой и свободный режимы
-  Debug3D.js      инструменты разработки (в кадре не работают, пока не позвали): lint() — сетки изнанкой, сотни одинаковых отдельных мешей,
-                  конвенция карт нормалей, лимит света и солнце последним, лимиты шейдеров WebGL2, пустой кадр;
-                  hold(pose)/release() — вид мимо контроллера камеры, frames(n), bench()/benchToggle(), setMode()
-  UI.js           интерфейс игры: DOM поверх холста по UI_LAYOUT; UI.get(id).setText/setValue/show/onClick,
-                  якоря 9 точек, масштаб по UI_REF_HEIGHT
-  Game.js         пример игры: место игровой логики (кнопка Run — клипы idle/run персонажа, шкала
-                  энергии, шаги; персонаж берётся по тегу, не по имени)
-  main.js         вход: World3D.init -> Location3D(LOCATION_OBJECTS) -> камера -> UI -> Game -> цикл кадров; window.app
-libs/             babylon.js (9.26 UMD), babylonjs.loaders.min.js (glTF-загрузчик той же версии), simplex-noise.js;
-                  *.d.ts — их типы для tsc
-assets/           ground_texture_{g,d,s}.jpg — трава, песок, снег; models/*.fbx, *.glb — модели объектов
-                  (character.glb — персонаж с клипами idle/run, генерируется tools/make-character.mjs);
-                  sounds/*.wav, *.mp3 — звуки (step.wav генерируется tools/make-sounds.mjs)
-tools/            dev-server.mjs, build.mjs, asset-scan.mjs, zip.mjs, check.mjs (типы + тесты),
-                  make-character.mjs, make-sounds.mjs
-tsconfig.json     проверка типов игры; globals.d.ts — window.app, material.arcToon, записи объектов
-tests/            *.test.mjs (node --test): Store, heightAt, сканер ассетов, запись редактора, звук,
-                  связка скиллов; browser-scripts.mjs — скрипты игры в node:vm + пустышка Babylon
-_utils/editor/    редактор (в билд не едет): server.mjs (HTTP), save.mjs (запись Constants.js,
-                  Objects.js и UILayout.js), index.html, i18n.js (EN/RU), schema.js, inspector.js (Global Settings),
-                  objects-panel.js (Objects: список, свойства, гизмо, импорт, тег, скрытие, звук),
-                  sound-panel.js (Sound: константы звука и файлы assets/sounds),
-                  ui-panel.js (UI: элементы интерфейса, драг и ресайз поверх вида, вложенность), history.js (EditHistory:
-                  Ctrl+Z / Ctrl+Shift+Z), loader.js, lab.js (вид), debug-tools.js (режим вида и «Lint scene»
-                  на панели вида — Debug3D), onboarding.js (тур из 6 слайдов по редактору: первый
-                  запуск и кнопка «?»), main.js; tsconfig.json — его типы
-claude/           для Claude Code, едет пользователям (в билд игры — нет): skills/<имя>/SKILL.md — скиллы,
-                  launch.json — шаблон .claude/launch.json для панели браузера
+TTD.zip           установка OpenTTD пользователя (openttd.cfg, сохранения): источник настроек по умолчанию
+docs/TTD-mechanics.md  правила TTD с числами и что реализовано / упрощено
+js/               код — классические скрипты:
+  Constants.js    Store, IS_MOBILE, TTD_* (масштаб мира, скорость, настройки новой игры из openttd.cfg),
+                  CAMERA_*, WORLD3D_*, UI_*, AUDIO_*, LOCATION_*/TERRAIN_* (редактор) (грузится первым)
+  UILayout.js     UI_LAYOUT — весь HUD игры: тулбар TTD, строки стройки, окно, статус-бар, новости, диалог новой игры
+  TTDUtil.js      Rng, Dir (DiagDir TTD), Calendar, Money, IMath
+  TTDData.js      таблицы OpenTTD 0.5.3: грузы, цены, мосты, аэропорты, транспорт, предприятия, дома, имена городов
+  TTDMap.js       GameMap: углы-высоты, склоны, фундаменты, тайлы, генерация ландшафта, терраформинг, сохранение
+  TTDTrack.js     Track (6 кусков пути, trackdir, геометрия, связность рельсов и дорог), PathFinder (A*)
+  TTDTown.js      Town, TownNames, Towns — рост, дома, пассажиры и почта, рейтинг, действия администрации
+  TTDIndustry.js  Industry, Industries — размещение, производство, доставка, изменения, закрытие
+  TTDStation.js   Station — части, охват, приём грузов, пакеты грузов, рейтинг TTD
+  TTDCompany.js   Company — деньги, кредит, финансы по 13 статьям, кварталы, оценка
+  TTDVehicle.js   Vehicle, Vehicles — приказы, погрузка, оплата, поломки, сервис, автообновление
+  TTDTrain.js, TTDRoadVehicle.js, TTDShip.js, TTDAircraft.js — движение по типам
+  TTDWorld.js     World — часы (74 тика в дне), циклы TTD, экономика, субсидии, save/load
+  TTDCommands.js  Commands — все действия игрока с ценой и проверками (DC_EXEC-схема)
+  TTDTerrain3D.js тайловый террейн чанками + море (заменяет Terrain3D для камеры и пиков), MeshData
+  TTDModels3D.js  процедурные модели: дома, предприятия, пути, дороги, станции, депо, мосты, транспорт
+  TTDRender3D.js  отрисовка мира: чанки, инстансы деревьев/транспорта/огней сигналов, оверлеи, пики
+  TTDTools.js     инструменты стройки (autorail, дороги, станции, депо, сигналы, мосты, туннели, ландшафт…)
+  TTDGui.js       HUD: тулбар, строки стройки, окна (транспорт, депо, станция, город, финансы…), новости
+  Game.js         игра: мир + вид + камера + HUD + инструмент; часы, ввод, сохранения
+  main.js         вход: World3D.init -> UI -> Game -> цикл кадров; window.app = { game, camera, view }
+  World3D.js, CameraControl.js (+ leftPan — ЛКМ двигает карту без инструмента), Instances3D.js (+ pitch),
+  UI.js, Sound3D.js, Debug3D.js, Model3D.js, Gltf3D.js — движок набора; Terrain3D.js, Location3D.js,
+  Objects.js — локация набора (их грузит только редактор)
+libs/             babylon.js (9.26 UMD), babylonjs.loaders.min.js, simplex-noise.js; *.d.ts — их типы для tsc
+assets/           текстуры земли (трава, песок, снег — в атласе террейна TTD); модели и звуки примера набора
+tools/            dev-server.mjs, build.mjs, asset-scan.mjs, zip.mjs, check.mjs (типы + тесты), make-*.mjs
+tests/            *.test.mjs (node --test): тесты набора + ttd-sim.test.mjs (формулы TTD и целые маршруты:
+                  автобусы, поезд, два поезда на кольце с сигналами, save/load); ttd-files.mjs — список скриптов симуляции
+_utils/editor/    редактор набора (в билд не едет); schema.js — в том числе группы ttd-world и ttd-newgame
+claude/           скиллы (skills/<имя>/SKILL.md, в том числе ttd) и шаблон launch.json
 ```
 
-## Как начать игру на наборе
+## Как устроена игра TTD (кратко; подробно — скилл `ttd`)
 
-1. Логика — в `js/Game.js` (пример в наборе: `constructor(app)` и `update(dt)`, зовётся из цикла
-   `main.js` до рендера); большая игра — новые файлы: `<script>` до `main.js` + строка в `CODE_FILES`.
-2. Статичные объекты локации — вкладка Objects редактора (`Objects.js`), в коде —
-   `app.location.objects` (`{ def, mesh }`). Свои объекты: `BABYLON.MeshBuilder`/меши или
-   `Model3D.load` + `Model3D.build` в `app.location.view.scene` -> `World3D.addObject` ->
-   позиция на `app.location.terrain.heightAt(x, y)`.
-3. Персонаж с анимацией — модель `.glb`: `Model3D.clips(mesh).play('run')`, переход между клипами —
-   сам (скилл `world3d`). Камера за героем — `app.camera.follow(obj)` (объект с полями `x`, `y`).
-4. Интерфейс — записи в `UILayout.js` (вкладка UI редактора) + `UI.get(id)` в коде (скилл `ui`,
-   инвариант 11); меню и диалог — панель и элементы с `parent`, показываются одним `show()`.
-   Новые числа — в `Constants.js` и `_utils/editor/schema.js`.
-5. Что расставил пользователь, код берёт по тегу: `app.location.findByTag('coin')` (скилл
-   `world3d`). Звук события — `Sound3D.play('assets/sounds/…')`, звук объекта — поле `sound`
-   его записи (скилл `sound`).
+1. Логика отдельно от 3D: `World` и всё в `js/TTD*.js` кроме `*3D.js`, `TTDTools.js`, `TTDGui.js` работает
+   в node без Babylon — `tests/ttd-sim.test.mjs` играет целые маршруты по тикам.
+2. Мир меняется только через `Commands` (или саму симуляцию); изменённый тайл — `map.markDirty(t)`, путь
+   или сигнал — `world.railVersion++`, дома/предприятия/части станций — `world.acceptanceDirty = true`.
+3. Единицы логики — тайлы и уровни высоты; мир px = тайл × `TTD_TILE`, уровень × `TTD_LEVEL`.
+4. HUD — только `UI.get(id)` по записям `UILayout.js`; окна — методы `Gui.v…()`.
 
-## Чего в наборе нет
+## Чего в игре нет (пока)
 
-Физики и коллизий, готовых игрока и противника (`Game.js` — только образец места для
-логики), текстур и скелета у FBX (`Model3D` — геометрия и цвета материалов бинарного FBX, центр
-и оси частей; скелет, клипы и текстуры — только в GLB), картинок и привязки к точке мира в UI
-(виды элементов — текст, панель, шкала, кнопка), нескольких сцен/уровней
-(одна локация), сохранений прогресса, тестов рендера и ввода (тесты — только логика без 3D).
-У звука (`Sound3D.js`) нет преград, эха и доплера: громкость — по расстоянию от камеры (область
-слышимости — шар), панорама — по стороне экрана.
+Конкурентов-ИИ, нефтяных вышек, климатов sub-arctic/toyland, пресигналов и path-сигналов,
+промежуточных остановок поездов без non-stop, катастроф, графиков, лиги, миникарты, переоборудования,
+акций, каналов, буев и waypoints. Звуков игры TTD нет (движок звука набора есть).
