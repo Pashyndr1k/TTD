@@ -344,9 +344,32 @@ class Gui {
         const railType = depot && depot.kind === 'rail' ? w.map.railType[depot.t] : null;
         let list = w.buyable(type, railType);
         if (type === 'air' && hangar && hangar.airport && hangar.airport.type === 2) list = list.filter(e => e.heli);
+        // Trains: locomotives first, then wagons (TTD's wagon names — "Wood Truck", "Oil Tanker" —
+        // are rail wagons, so each row says which it is).
+        if (type === 'rail') list = list.filter(e => !e.wagon).concat(list.filter(e => e.wagon));
         const trains = /** @type {Train[]} */ (inside.filter(v => v instanceof Train && v.hasEngine()));
         const target = trains.find(v => v.id === this.win.train) || trains[trains.length - 1];
-        const rows = list.map((e, i) => [e.name + ' — ' + Money.format(Vehicles.price(w, e)), () => { this.win.sel = i; this.render(); }]);
+        const rows = list.map((e, i) => [(type === 'rail' ? (e.wagon ? 'Wagon: ' : 'Locomotive: ') : '') + e.name + ' — ' + Money.format(Vehicles.price(w, e)), () => { this.win.sel = i; this.render(); }]);
+        let text = '';
+        if (type === 'rail' && !list.some(e => !e.wagon)) {
+            // No locomotive yet (sub-tropical has none before the Wills 2-8-0, 1944–45).
+            let next = null;
+            for (const st of w.engines) {
+                if (!st || st.available) continue;
+                const f = World.ENGINE[st.id];
+                if (f.type !== 'rail' || f.wagon || !Vehicles.railCompatible(f.rail, railType)) continue;
+                if (!next || st.intro < next.intro) next = { name: f.name, intro: st.intro };
+            }
+            text = 'No locomotives are available yet, only wagons.' + (next ? ' The first one, ' + next.name + ', arrives around ' +
+                Calendar.format(next.intro, true) + '.' : '') + ' Until then use road vehicles, ships or aircraft, or start a new game in a later year.';
+            // Window text doesn't wrap: break it into lines.
+            const lines = [];
+            let line = '';
+            for (const word of text.split(' ')) {
+                if (line && (line + ' ' + word).length > 50) { lines.push(line); line = word; } else line = line ? line + ' ' + word : word;
+            }
+            text = lines.concat(line).join('\n') + '\n\n';
+        }
         const e = list[this.win.sel];
         let info = 'Select a vehicle to see its details.';
         if (e) {
@@ -373,7 +396,7 @@ class Gui {
             this.win.train = v.id;
             if (v.type !== 'train') this.open('vehicle', v.id);
         }]);
-        return { title, text: '', rows, info, acts };
+        return { title, text: '', rows, info: text + info, acts };
     }
 
     vStation(id) {

@@ -55,7 +55,11 @@ build.bat          # or: node tools/build.mjs          -> dist/*.zip
   2. Track: drag to lay it. Diagonal drags lay diagonal track; a click near a tile corner lays
      a corner piece, drawn as a curve. Track follows TTD's slope rules and ramps up hills.
   3. Depot next to the track.
-  4. Click the depot → New vehicles → buy an engine, then add wagons.
+  4. Click the depot → New vehicles → buy a locomotive, then add wagons. Rows say which is which:
+     TTD's wagon names ("Wood Truck", "Oil Tanker") are rail wagons, not road vehicles.
+     In the sub-tropical climate there is no locomotive before the Wills 2-8-0 (around
+     1944–45). With the default 1941 start, begin with buses, lorries, ships or aircraft, or
+     start a new game in 1950.
   5. In the train window: Go To… → click station A, Go To… → click station B, then Start.
 - **Road services:** road + bus or lorry stops + a road depot.
   - Roads work like TTD's. Drag along a row from the half tile you press to the half tile you
