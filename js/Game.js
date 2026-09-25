@@ -35,6 +35,12 @@ class Game {
         this.hoverDirty = false;
         this._fpsT = 0;
         this._tipT = 0;
+        this._frameError = false;
+        /** The jukebox (TTD's music player): on/off, the track now playing, its sound handle. */
+        this.musicOn = (typeof TTD_MUSIC !== 'undefined' ? TTD_MUSIC : 1) === 1;
+        this.musicTrack = -1;
+        /** @type {SoundHandle | null} */
+        this.musicHandle = null;
         this.gui = new Gui(this);
         this.bindInput();
         this.newGame(World.defaultSettings());
@@ -135,6 +141,22 @@ class Game {
             o.x = x; o.y = y;
         }
         Sound3D.play(src, o);
+    }
+
+    /**
+     * The jukebox: Game.MUSIC in turn, like TTD's music player; each tune plays once, then the
+     * next. The browser keeps it silent until the first click on the page.
+     */
+    updateMusic() {
+        if (!this.musicOn) { if (this.musicHandle) { this.musicHandle.stop(); this.musicHandle = null; } return; }
+        if (this.musicHandle && this.musicHandle.playing) return;
+        this.nextTrack();
+    }
+
+    nextTrack() {
+        if (this.musicHandle) this.musicHandle.stop();
+        this.musicTrack = (this.musicTrack + 1) % Game.MUSIC.length;
+        this.musicHandle = Sound3D.music(Game.MUSIC[this.musicTrack].src, { loop: false, volume: 0.7 });
     }
 
     /**
@@ -373,6 +395,7 @@ class Game {
         const alpha = this.paused ? 1 : IMath.clamp(this.acc / Game.tickMs(), 0, 1);
         this.render.update(dt, 6, alpha);
         this.updateVehicleSounds();
+        this.updateMusic();
         if (this.hoverDirty || this.down) this.updateHover();
         this.render.setSelected(this.selected);
         if (this._tipT > 0) this._tipT -= dt;
@@ -394,5 +417,11 @@ Game.SOUNDS = {
     plane: 'assets/sounds/plane.wav', crash: 'assets/sounds/crash.wav', breakdown: 'assets/sounds/breakdown.wav',
     news: 'assets/sounds/news.wav', error: 'assets/sounds/error.wav',
 };
+/** The jukebox's tunes (8-bit, synthesized by tools/make-sounds.mjs). */
+Game.MUSIC = [
+    { name: 'Rails at Dawn', src: 'assets/sounds/music_rails.wav' },
+    { name: 'Night Freight', src: 'assets/sounds/music_night.wav' },
+    { name: 'Boomtown Rag', src: 'assets/sounds/music_rag.wav' },
+];
 Game.SAVE_KEY = 'ttd3d.save';
 Game.AUTOSAVE_KEY = 'ttd3d.autosave';

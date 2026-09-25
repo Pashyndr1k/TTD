@@ -461,3 +461,18 @@ test('первый поезд с 1900 года: локомотив и вагон
     for (let d = 0; d < 365 * 30; d += 30) { g.date += 30; g.updateEngines(false); }
     assert.ok(g.buyable('rail', 0).some(e => e.name === 'Wills 2-8-0 (Steam)'), 'not retired early');
 });
+
+test('протяжка дороги: любые две точки курсора дают путь без ошибок (в том числе внутри одной клетки)', () => {
+    const w = flatWorld(), m = w.map;
+    let seed = 7;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) >>> 0) / 4294967296;
+    for (let i = 0; i < 3000; i++) {
+        const a = { fx: 5 + rnd() * 20, fy: 5 + rnd() * 20 };
+        const b = i % 3 === 0 ? { fx: Math.floor(a.fx) + rnd(), fy: Math.floor(a.fy) + rnd() } : { fx: 5 + rnd() * 20, fy: 5 + rnd() * 20 };
+        const list = Commands.roadPath(m, a, b);
+        assert.ok(list.length > 0 && list.every(q => q.bits > 0 && q.bits < 16), JSON.stringify([a, b]));
+        Commands.buildLongRoad(w, list, false);
+    }
+    // Inside one tile, a drag across it builds both halves along the way it went.
+    assert.equal(Commands.roadPath(m, { fx: 10.1, fy: 10.4 }, { fx: 10.9, fy: 10.6 })[0].bits, 5);
+});

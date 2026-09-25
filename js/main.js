@@ -37,7 +37,10 @@ function startGame() {
     World3D.engine.runRenderLoop(() => {
         const now = performance.now(), dt = (now - last) / 1000;
         last = now;
-        game.update(Math.min(0.1, dt));
+        // An error in the game's frame must not stop the view: report it once and draw on.
+        try { game.update(Math.min(0.1, dt)); } catch (e) {
+            if (!game._frameError) { game._frameError = true; console.error(e); game.error('Internal error: ' + (e && e.message)); }
+        }
         game.camera.update(dt);
         Sound3D.update(game.camera);
         World3D.renderFrame();

@@ -416,7 +416,9 @@ const Commands = {
             const d = [[u, Dir.NE], [1 - u, Dir.SW], [v, Dir.NW], [1 - v, Dir.SE]].sort((p, q) => p[0] - q[0])[0][1];
             return [{ t: map.idx(ax, ay), bits: 1 << d }];
         }
-        if (ay === by && ax !== bx) out = Commands.roadDrag(map, a, b, 0);
+        // Inside one tile: the halves under both points along the way the pointer moved.
+        if (ax === bx && ay === by) out = Commands.roadDrag(map, a, b, Math.abs(b.fx - a.fx) >= Math.abs(b.fy - a.fy) ? 0 : 1);
+        else if (ay === by && ax !== bx) out = Commands.roadDrag(map, a, b, 0);
         else if (ax === bx && ay !== by) out = Commands.roadDrag(map, a, b, 1);
         else {
             // Tiles of a 4-connected line from a to b.

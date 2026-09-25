@@ -610,6 +610,8 @@ class Gui {
                 [(auto ? '' : '(no autosave) ') + 'Load autosave', () => { if (g.loadGame(Game.AUTOSAVE_KEY)) this.close(); }],
                 ['Currency: ' + Money.CURRENCIES[Money.currency].id, () => { Money.currency = (Money.currency + 1) % Money.CURRENCIES.length; this.world.settings.currency = Money.currency; this.render(); }],
                 ['Game speed: fast forward x' + g.ffMult, () => { g.ffMult = g.ffMult >= 16 ? 2 : g.ffMult * 2; this.render(); }],
+                ['Music: ' + (g.musicOn ? 'on' + (g.musicTrack >= 0 ? ' — ' + Game.MUSIC[g.musicTrack].name : '') : 'off'), () => { g.musicOn = !g.musicOn; this.render(); }],
+                ['Next track', () => { g.musicOn = true; g.nextTrack(); this.render(); }],
                 ['Help and keys', () => this.open('help')],
             ],
         };
