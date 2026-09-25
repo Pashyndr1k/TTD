@@ -380,8 +380,11 @@ class Train extends Vehicle {
         // The new front is the old tail: it stands (len - d) into its reversed piece.
         this.steps = rev;
         this.pos = rev[0].len - d;
-        for (const car of this.cars) car.flip = !car.flip;
+        // The wagons stay where they are (now in the opposite order); the engine runs round its
+        // train to the new front, so it always leads, never pushes.
         this.cars.reverse();
+        Trains.arrange(this);
+        this._prev = null;
         this._peek = null;
         this.path = null;
         this.stopTarget = null;
@@ -445,6 +448,7 @@ class Train extends Vehicle {
         this._peek = null;
         this.path = null;
         this.parts = [];
+        Trains.arrange(this);   // a save from before engines led after reversing
         if (this.state === 'depot') this.placeInDepot(world);
         else this.updateParts(world);
     }
@@ -452,6 +456,19 @@ class Train extends Vehicle {
 
 /** @satisfies {Record<string, any>} */
 const Trains = {
+    /**
+     * Put a train's cars in running order: the engine(s) first, then the wagons in their order,
+     * then a rear head (the second half of a dual-headed engine) last; every car faces the way
+     * the train goes.
+     */
+    arrange(train) {
+        const isEngine = (c) => !World.ENGINE[c.engine].wagon && !c.rearHead;
+        const front = train.cars.filter(isEngine), rear = train.cars.filter(c => c.rearHead);
+        const wagons = train.cars.filter(c => !isEngine(c) && !c.rearHead);
+        train.cars = front.concat(wagons, rear);
+        for (const c of train.cars) c.flip = false;
+    },
+
     key(world, s) { return s.w >= 0 ? world.map.size * 8 + s.w : s.t * 8 + (s.td >> 1); },
 
     occupy(world, train, step, delta) {

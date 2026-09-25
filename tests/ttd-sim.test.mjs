@@ -391,7 +391,7 @@ test('карта: каждая новая игра — новая карта, г
     }
 });
 
-test('кнопка Reverse: едущий поезд тормозит и едет обратно, паровоз толкает; наклон вагонов на уклоне', () => {
+test('кнопка Reverse: едущий поезд тормозит и едет обратно паровозом вперёд; наклон вагонов на уклоне', () => {
     // Track along row 20 up a ramp (tile 29 is an incline up to level 2), a station at the top.
     const w = flatWorld(), m = w.map, Trains = page.get('Trains');
     for (let x = 30; x <= 55; x++) for (let y = 18; y <= 23; y++) m.hc[y * m.CW + x] = 2;
@@ -419,13 +419,17 @@ test('кнопка Reverse: едущий поезд тормозит и едет
     let stood = false;
     for (let i = 0; i < 74 * 10 && tr.reversing; i++) { w.tick(); if (tr.speed === 0) stood = true; }
     assert.ok(!tr.reversing && stood, 'stopped, then reversed');
-    const engine = tr.cars.findIndex(c => !World.ENGINE[c.engine].wagon);
-    assert.equal(engine, tr.cars.length - 1, 'the engine is now at the back, pushing');
+    assert.ok(!World.ENGINE[tr.cars[0].engine].wagon, 'the engine ran round: it leads again');
+    assert.ok(tr.cars.every(c => !c.flip), 'every car faces the way it goes');
     const back = Trains.stepPoint(w, tr.steps[0], tr.pos);
     assert.ok(Math.cos(back.heading) < 0, 'going back the way it came');
-    // The engine faces backwards now: on the ramp going down it still tilts the right way.
-    const p = tr.parts[engine];
-    if (!p.hidden && p.x > 29 && p.x < 30) assert.ok(Math.cos(p.heading) > 0 && p.grade > 0, 'nose still uphill');
+    assert.ok(Math.cos(tr.parts[0].heading) < 0, 'the engine faces that way too');
+    // Wagons bought later go behind the last wagon, not in front of the engine.
+    tr.state = 'depot';
+    const coachesBefore = tr.cars.length;
+    assert.equal(Vehicles.addWagon(w, tr, coach.id), null);
+    assert.equal(tr.cars.length, coachesBefore + 1);
+    assert.ok(!World.ENGINE[tr.cars[0].engine].wagon && World.ENGINE[tr.cars[tr.cars.length - 1].engine].wagon, 'engine first, new wagon last');
 });
 
 test('кнопка Turn around: автобус разворачивается на следующей клетке', () => {

@@ -331,7 +331,8 @@ prices, running costs, speeds, power, weight, capacity and lifespans.
   round in). They queue behind each other, wait at level crossings and turn round at dead
   ends and road works. A train hitting a road vehicle on a crossing destroys it.
 - **Reverse** (TTD's `CmdReverseTrainDirection`): a standing train reverses at once, a moving
-  one brakes to a stop first. The consist flips, so the engine pushes from the back. Road
+  one brakes to a stop first. The wagons keep their places and the engine runs round to the new
+  front, so an engine always leads. OpenTTD lets it push from the back instead. Road
   vehicles **turn around** (TTD's `CmdTurnRoadVeh`) with a U-turn on the next tile.
 - **Tilt:** every car and road vehicle pitches by the height of the track or road under its front
   and rear axles. It eases onto and off a slope, and a car facing backwards tilts the right way.

@@ -74,8 +74,10 @@ build.bat          # or: node tools/build.mjs          -> dist/*.zip
 - **Aircraft:** buy them in an airport's hangar.
 - **Signals** split track into blocks, one train per block. Click a signal again to make it one-way.
 - **Train window:** **Reverse** turns a train round, as in TTD. A standing train reverses at
-  once; a moving one brakes to a stop first and then backs out, its engine pushing from the
-  back. Road vehicles have **Turn around** instead: they U-turn on the next tile.
+  once; a moving one brakes to a stop first. The engine runs round to the other end so it
+  always leads, also when a train turns round at the end of a line. Road vehicles have **Turn
+  around** instead: they U-turn on the next tile. New wagons are always added behind the last
+  wagon.
 - **Sounds** (after your first click on the page, as browsers require):
   - building and demolishing;
   - the cash register when a vehicle earns money;
