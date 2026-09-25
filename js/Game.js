@@ -417,11 +417,18 @@ Game.SOUNDS = {
     plane: 'assets/sounds/plane.wav', crash: 'assets/sounds/crash.wav', breakdown: 'assets/sounds/breakdown.wav',
     news: 'assets/sounds/news.wav', error: 'assets/sounds/error.wav',
 };
-/** The jukebox's tunes (8-bit, synthesized by tools/make-sounds.mjs). */
+/** The jukebox's tunes (the player's own tracks in assets/sounds/music), played in this order. */
 Game.MUSIC = [
-    { name: 'Rails at Dawn', src: 'assets/sounds/music_rails.wav' },
-    { name: 'Night Freight', src: 'assets/sounds/music_night.wav' },
-    { name: 'Boomtown Rag', src: 'assets/sounds/music_rag.wav' },
+    { name: 'Slay The Evil', src: 'assets/sounds/music/01-slay-the-evil.mp3' },
+    { name: 'Perilous Dungeon', src: 'assets/sounds/music/02-perilous-dungeon.mp3' },
+    { name: 'Boss Battle', src: 'assets/sounds/music/03-boss-battle.mp3' },
+    { name: 'Mechanical Complex', src: 'assets/sounds/music/04-mechanical-complex.mp3' },
+    { name: 'Last Mission', src: 'assets/sounds/music/05-last-mission.mp3' },
+    { name: 'Unknown Planet', src: 'assets/sounds/music/06-unknown-planet.mp3' },
+    { name: 'MonsterVania #1', src: 'assets/sounds/music/07-monstervania-1.mp3' },
+    { name: 'Space Adventure', src: 'assets/sounds/music/08-space-adventure.mp3' },
+    { name: 'Crisis', src: 'assets/sounds/music/09-crisis.mp3' },
+    { name: 'Jester Theme', src: 'assets/sounds/music/10-jester-theme.mp3' },
 ];
 Game.SAVE_KEY = 'ttd3d.save';
 Game.AUTOSAVE_KEY = 'ttd3d.autosave';

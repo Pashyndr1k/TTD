@@ -342,8 +342,8 @@ prices, running costs, speeds, power, weight, capacity and lifespans.
 - **Sounds** (`Game.SOUNDS`, synthesized by `tools/make-sounds.mjs`): building, demolition,
   income (cash register), a whistle or horn as a train starts off, chuffing, bus honks,
   foghorns, aircraft take-offs, breakdowns, crashes, the news chime, clicks and errors.
-  Music: three original 8-bit tunes (`Game.MUSIC`) from a four-voice tracker in the same tool,
-  played in turn like TTD's jukebox.
+  Music: the player's own tracks in `assets/sounds/music` (`Game.MUSIC`), played in turn
+  like TTD's jukebox.
 - **Ships** sail on water tiles to the water in front of a dock.
 - **Aircraft** taxi, take off, cruise, approach and land. They need a free terminal and hold
   above the airport otherwise. Fast jets can crash on a small airport.

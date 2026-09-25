@@ -360,7 +360,7 @@ const KIT_SCHEMA = [
               hint: { en: 'How long a puff of steam or smoke rises before it is gone', ru: 'Сколько клуб пара или дыма поднимается, прежде чем исчезнуть' } },
             { name: 'TTD_MUSIC', kind: 'select', options: [{ value: 0, label: { en: 'Off', ru: 'Нет' } }, { value: 1, label: { en: 'On', ru: 'Да' } }],
               label: { en: 'Music', ru: 'Музыка' },
-              hint: { en: 'The 8-bit jukebox at game start; it can be switched in the Game menu', ru: '8-битный музыкальный автомат при старте; переключается в меню Game' } },
+              hint: { en: 'The jukebox (assets/sounds/music) at game start; it can be switched in the Game menu', ru: 'Музыкальный автомат (assets/sounds/music) при старте; переключается в меню Game' } },
             { name: 'TTD_VEHICLE_SOUNDS', kind: 'select', options: [{ value: 0, label: { en: 'Off', ru: 'Нет' } }, { value: 1, label: { en: 'On', ru: 'Да' } }],
               label: { en: 'Vehicle sounds', ru: 'Звуки транспорта' },
               hint: { en: 'Whistles, chuffing, horns and engines of vehicles near the camera', ru: 'Гудки, пыхтение и моторы транспорта рядом с камерой' } },

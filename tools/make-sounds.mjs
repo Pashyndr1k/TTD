@@ -1,8 +1,7 @@
 // make-sounds.mjs — the kit's sample sounds in assets/sounds/, synthesized from numbers:
 //   step.wav — a footstep: a short thump with a gritty tail (the kit's sample game).
 //   The TTD remake's effects (Game.SOUNDS): click, build, demolish, cash, whistle, chuff, horn,
-//   bus, ship, plane, crash, breakdown, news, error; and three 8-bit tunes (music_rails,
-//   music_night, music_rag — Game.MUSIC) from a tiny four-voice tracker.
+//   bus, ship, plane, crash, breakdown, news, error.
 // Generated — no source file, no licence questions; replace it with a recording. Other files in
 // assets/sounds are ordinary assets — this tool does not touch them.
 // An effect of your own is a few lines here: an oscillator or noise() × an envelope -> writeWav.
@@ -195,116 +194,7 @@ function error() {
   return render(len, (t) => env(t, len, 0.005, 0.03) * Math.sign(Math.sin(2 * Math.PI * 150 * t)) * 0.3);
 }
 
-// --- 8-bit music: a tiny four-voice tracker (pulse lead, pulse arpeggio, triangle bass, noise) ---
-//
-// A song is data: tempo, swing, chords and a lead line per bar, eight eighth-note steps per bar
-// ('C5' — a note, '-' — hold, '.' — rest). The accompaniment is generated from the chords:
-// oom-pah bass on the triangle, arpeggiated chord stabs on the second pulse, hats and a snare on
-// the noise channel. The whole song plays twice, the second time with the arpeggio voice
-// doubling the tune an octave down. Written as 8-bit PCM at 11025 Hz: the grit is the point.
-
-const MUSIC_RATE = 11025;
-const NOTE = { C: 0, 'C#': 1, Db: 1, D: 2, 'D#': 3, Eb: 3, E: 4, F: 5, 'F#': 6, Gb: 6, G: 7, 'G#': 8, Ab: 8, A: 9, 'A#': 10, Bb: 10, B: 11 };
-const midiOf = (name) => { const m = /^([A-G][#b]?)(-?\d)$/.exec(name); return 12 * (Number(m[2]) + 1) + NOTE[m[1]]; };
-const freqOf = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
-const CHORD = { '': [0, 4, 7], m: [0, 3, 7], '7': [0, 4, 7, 10], m7: [0, 3, 7, 10], maj7: [0, 4, 7, 11] };
-const chordNotes = (name) => { const m = /^([A-G][#b]?)(m7|maj7|m|7)?$/.exec(name); return { root: NOTE[m[1]], tones: CHORD[m[2] || ''] }; };
-
-function tracker(song) {
-  const R = MUSIC_RATE, beat = 60 / song.bpm, swing = song.swing || 0.5;
-  const bars = song.bars.length, passes = 2;
-  const barLen = beat * 4, total = barLen * bars * passes;
-  const out = new Float64Array(Math.ceil(total * R));
-  // Start time of eighth step k within a bar (swung pairs).
-  const stepT = (k) => Math.floor(k / 2) * beat + (k % 2 ? beat * swing : 0);
-  const stepLen = (k) => (k % 2 ? beat * (1 - swing) : beat * swing);
-  const add = (t0, dur, f) => {
-    const i0 = Math.max(0, Math.floor(t0 * R)), i1 = Math.min(out.length, Math.floor((t0 + dur) * R));
-    for (let i = i0; i < i1; i++) out[i] += f(i / R - t0, i);
-  };
-  const pulse = (freq, duty, vol, dur, vib) => (t) => {
-    const env = Math.min(1, t / 0.004) * (0.75 + 0.25 * Math.exp(-t * 6)) * Math.min(1, (dur - t) / 0.02);
-    const f = freq * (1 + (vib && t > 0.18 ? 0.006 * Math.sin(2 * Math.PI * 5.5 * t) : 0));
-    return ((t * f) % 1 < duty ? 1 : -1) * vol * env;
-  };
-  const tri = (freq, vol, dur) => (t) => {
-    const ph = (t * freq) % 1, env = Math.min(1, t / 0.003) * Math.min(1, (dur - t) / 0.015);
-    // NES-like stepped triangle (16 levels).
-    return (Math.round((ph < 0.5 ? 4 * ph - 1 : 3 - 4 * ph) * 7.5) / 7.5) * vol * env;
-  };
-  let seed = 12345;
-  const rnd = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 0x80000000 - 1);
-  const hat = (vol) => (t) => rnd() * vol * Math.exp(-t * 90);
-  const snare = (vol) => (t) => (rnd() * 0.8 + Math.sin(2 * Math.PI * 180 * t) * 0.4) * vol * Math.exp(-t * 22);
-  const kick = (vol) => (t) => Math.sin(2 * Math.PI * (55 + 90 * Math.exp(-t * 30)) * t) * vol * Math.exp(-t * 14);
-
-  for (let pass = 0; pass < passes; pass++) {
-    for (let b = 0; b < bars; b++) {
-      const t0 = (pass * bars + b) * barLen;
-      const [chordName, line] = song.bars[b];
-      const ch = chordNotes(chordName);
-      // Lead: notes with holds.
-      const steps = line.trim().split(/\s+/);
-      for (let k = 0; k < steps.length; k++) {
-        const tok = steps[k];
-        if (tok === '-' || tok === '.') continue;
-        let len = stepLen(k), j = k + 1;
-        while (j < steps.length && steps[j] === '-') { len += stepLen(j); j++; }
-        const midi = midiOf(tok) + (song.transpose || 0);
-        add(t0 + stepT(k), len * 0.95, pulse(freqOf(midi), 0.25, song.lead || 0.2, len * 0.95, true));
-        if (pass === 1) add(t0 + stepT(k), len * 0.9, pulse(freqOf(midi - 12), 0.125, 0.09, len * 0.9, false));
-      }
-      const rootMidi = 36 + ch.root + (song.transpose || 0);
-      for (let q = 0; q < 4; q++) {
-        const tq = t0 + q * beat;
-        // Bass: root on 1 and 3, the fifth on 2 and 4 (oom-pah).
-        const bn = rootMidi + (q % 2 ? 7 : 0) - (ch.root > 6 ? 12 : 0);
-        add(tq, beat * 0.85, tri(freqOf(bn), 0.3, beat * 0.85));
-        // Chord stabs on the off-beats, arpeggiated fast (a pulse can only play one note).
-        if (pass === 0) {
-          const ts = tq + beat * swing, dur = beat * (1 - swing) * 0.9;
-          add(ts, dur, (t, i) => {
-            const n = ch.tones[Math.floor(t / 0.03) % ch.tones.length];
-            return pulse(freqOf(60 + ch.root + n + (song.transpose || 0) - (ch.root > 7 ? 12 : 0)), 0.125, 0.08, dur, false)(t);
-          });
-        }
-        // Drums: kick on 1 and 3, snare on 2 and 4, hats on the off-beats.
-        add(tq, 0.25, q % 2 ? snare(song.drums || 0.12) : kick((song.drums || 0.12) * 1.8));
-        add(tq + beat * swing, 0.06, hat((song.drums || 0.12) * 0.5));
-      }
-    }
-  }
-  // Soft limit.
-  for (let i = 0; i < out.length; i++) out[i] = Math.tanh(out[i] * 1.2) * 0.9;
-  return out;
-}
-
-// Three original tunes, in the spirit of TTD's jazzy soundtrack.
-const SONGS = {
-  // Bright and swung, C major.
-  'music_rails.wav': { bpm: 138, swing: 0.6, bars: [
-    ['C', 'E5 - G5 - C6 - B5 A5'], ['C', 'G5 - - - E5 - C5 -'], ['F', 'F5 - A5 - C6 - A5 F5'], ['C', 'E5 - - - . . G5 -'],
-    ['G', 'D5 - G5 - B5 - A5 G5'], ['G7', 'F5 - D5 - B4 - G4 -'], ['C', 'C5 E5 G5 C6 B5 G5 E5 C5'], ['C', 'D5 - - - . . G5 G5'],
-    ['Am', 'A5 - C6 - E6 - C6 A5'], ['Em', 'G5 - - - E5 - B4 -'], ['F', 'C5 - F5 - A5 - C6 A5'], ['C', 'G5 - E5 - C5 - . G5'],
-    ['Dm', 'F5 - A5 - D6 - C6 A5'], ['G', 'B5 - - - G5 - D5 -'], ['C', 'E5 G5 C6 - G5 E5 C5 -'], ['G', 'D5 - B4 - G4 - . .'],
-  ] },
-  // Slow and moody, A minor.
-  'music_night.wav': { bpm: 112, swing: 0.5, lead: 0.18, drums: 0.09, bars: [
-    ['Am', 'A4 - - C5 E5 - - D5'], ['Am', 'C5 - B4 - A4 - - -'], ['Dm', 'D5 - - F5 A5 - - G5'], ['Am', 'E5 - - - . . . .'],
-    ['F', 'F5 - E5 - D5 - C5 -'], ['G', 'B4 - C5 - D5 - G5 -'], ['E', 'G#5 - - - E5 - - -'], ['E7', 'D5 - - - B4 - G#4 -'],
-    ['Am', 'A4 - C5 - E5 - A5 -'], ['Am', 'G5 - E5 - C5 - E5 -'], ['Dm', 'F5 - - - D5 - A4 -'], ['Dm', 'F5 - E5 - D5 - C5 -'],
-    ['F', 'C5 - A4 - F4 - A4 -'], ['E', 'B4 - - - G#4 - B4 -'], ['Am', 'A4 - - - - - . .'], ['E', 'E5 - D5 - C5 - B4 -'],
-  ] },
-  // A ragtime romp, F major.
-  'music_rag.wav': { bpm: 150, swing: 0.64, bars: [
-    ['F', 'A5 - . A5 C6 - A5 F5'], ['F', 'G5 A5 - F5 - . C5 -'], ['C7', 'E5 - G5 - Bb5 - G5 E5'], ['C7', 'C5 - - - . . C5 D5'],
-    ['F', 'F5 - A5 - C6 - D6 C6'], ['F7', 'A5 - Eb5 - F5 - A5 -'], ['Bb', 'Bb5 - D6 - F6 - D6 Bb5'], ['Bb', 'A5 G5 F5 - D5 - . .'],
-    ['F', 'C5 F5 A5 - C6 - A5 -'], ['D7', 'F#5 - A5 - D6 - C6 A5'], ['Gm', 'G5 - Bb5 - D6 - Bb5 G5'], ['C7', 'E5 - G5 - C6 - Bb5 G5'],
-    ['F', 'A5 - F5 - C5 - F5 A5'], ['C7', 'G5 - E5 - C5 - E5 G5'], ['F', 'F5 - A5 - C6 - A5 -'], ['F', 'F5 - - - . . . .'],
-  ] },
-};
-
-// Samples −1..1 -> the bytes of a WAV file: 16-bit at RATE, or 8-bit unsigned at `rate`.
+// Samples −1..1 -> the bytes of a WAV file: 16-bit at RATE (or 8-bit unsigned / another rate).
 function writeWav(samples, rate, bits) {
   rate = rate || RATE;
   bits = bits || 16;
@@ -340,7 +230,6 @@ function buildSounds() {
     'horn.wav': writeWav(horn()), 'bus.wav': writeWav(bus()), 'ship.wav': writeWav(ship()),
     'plane.wav': writeWav(plane()), 'crash.wav': writeWav(crash()), 'breakdown.wav': writeWav(breakdown()),
     'news.wav': writeWav(news()), 'error.wav': writeWav(error()),
-    ...Object.fromEntries(Object.entries(SONGS).map(([name, song]) => [name, writeWav(tracker(song), MUSIC_RATE, 8)])),
   };
 }
 

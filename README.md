@@ -86,8 +86,10 @@ build.bat          # or: node tools/build.mjs          -> dist/*.zip
   - breakdowns, crashes, the news chime, button clicks and error buzzes.
 
   Vehicle sounds come from where they are and fade with distance from the camera.
-- **Music:** an 8-bit jukebox plays three original chiptunes in turn: "Rails at Dawn",
-  "Night Freight" and "Boomtown Rag". Switch it with Game → Music, skip with Game → Next track.
+- **Music:** a jukebox plays the ten tracks in `assets/sounds/music` in turn: Slay The Evil,
+  Perilous Dungeon, Boss Battle and the rest. Switch it with Game → Music, skip with
+  Game → Next track. The playlist is `Game.MUSIC` in `js/Game.js`: add, remove or reorder
+  tracks there.
   Set `TTD_MUSIC = 0` to start without it.
 - **Steam and smoke:** steam engines puff as they run, diesels smoke as they pull away, and
   electric engines spark. Broken-down and crashed vehicles smoke. Every car tilts on a slope.

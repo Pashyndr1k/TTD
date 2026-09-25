@@ -117,11 +117,11 @@ Ordinary assets — put `.wav`, `.mp3` or `.ogg` there and the editor's Sound ta
 (a click auditions one), while the Objects tab offers them for an object's `sound` field.
 
 `step.wav` and the TTD remake's effects (`click`, `build`, `demolish`, `cash`, `whistle`, `chuff`,
-`horn`, `bus`, `ship`, `plane`, `crash`, `breakdown`, `news`, `error` — `Game.SOUNDS`), and its
-three 8-bit tunes (`music_rails`, `music_night`, `music_rag` — `Game.MUSIC`: a four-voice tracker,
-songs as data — tempo, swing, chords and a lead line per bar; 8-bit PCM at 11025 Hz) are
+`horn`, `bus`, `ship`, `plane`, `crash`, `breakdown`, `news`, `error` — `Game.SOUNDS`) are
 SYNTHESIZED by `tools/make-sounds.mjs` — no recording, no licence questions; replace them with
 real ones. The tool owns only the files it generates and never touches the rest.
+The TTD remake's music is the player's own `.mp3` files in `assets/sounds/music/` — the playlist
+`Game.MUSIC` (`js/Game.js`), each path a literal; file names without spaces or `#` (they are URLs).
 
 ```
 node tools/make-sounds.mjs          # write the files
