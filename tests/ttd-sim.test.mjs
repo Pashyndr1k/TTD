@@ -390,3 +390,93 @@ test('карта: каждая новая игра — новая карта, г
         assert.ok(high / land <= 0.3, 'mountains ' + (high / land * 100).toFixed(1) + '% (seed ' + seed + ')');
     }
 });
+
+test('кнопка Reverse: едущий поезд тормозит и едет обратно паровозом вперёд; наклон вагонов на уклоне', () => {
+    // Track along row 20 up a ramp (tile 29 is an incline up to level 2), a station at the top.
+    const w = flatWorld(), m = w.map, Trains = page.get('Trains');
+    for (let x = 30; x <= 55; x++) for (let y = 18; y <= 23; y++) m.hc[y * m.CW + x] = 2;
+    for (let x = 10; x <= 44; x++) must(Commands.run(w, ex => Commands.buildRail(w, idx(w, x, 20), Track.X, 0, ex), true));
+    must(Commands.run(w, ex => Commands.buildRailStation(w, idx(w, 45, 20), 0, 1, 3, 0, ex), true));
+    must(Commands.run(w, ex => Commands.buildRail(w, idx(w, 9, 20), Track.LOWER, 0, ex), true));
+    must(Commands.run(w, ex => Commands.buildDepot(w, idx(w, 9, 21), 'rail', Dir.NW, 0, ex), true));
+    const tr = Vehicles.build(w, engineByName('Kirby Paul Tank (Steam)').id, 0);
+    const coach = w.buyable('rail', 0).find(e => e.wagon && w.cargo(e.cargo).key === 'passengers');
+    for (let i = 0; i < 2; i++) Vehicles.addWagon(w, tr, coach.id);
+    tr.orders = [{ kind: 'station', dest: 0 }];
+    tr.stopped = false;
+    let up = null;
+    for (let i = 0; i < 74 * 40 && !up; i++) {
+        w.tick();
+        const p = tr.parts[0];
+        if (tr.state === 'run' && p && !p.hidden && p.x > 29.3 && p.x < 29.7) up = { grade: p.grade, dir: Math.cos(p.heading) };
+    }
+    assert.ok(up, 'the train reached the ramp');
+    assert.ok(up.grade > 0 && up.dir > 0, 'climbing: nose up');
+    // Reverse while moving: it brakes, stops, then heads back (-x) with the engine at the back.
+    for (let i = 0; i < 20; i++) w.tick();
+    assert.ok(tr.speed > 0, 'moving');
+    assert.equal(tr.requestReverse(w), '');
+    let stood = false;
+    for (let i = 0; i < 74 * 10 && tr.reversing; i++) { w.tick(); if (tr.speed === 0) stood = true; }
+    assert.ok(!tr.reversing && stood, 'stopped, then reversed');
+    assert.ok(!World.ENGINE[tr.cars[0].engine].wagon, 'the engine ran round: it leads again');
+    assert.ok(tr.cars.every(c => !c.flip), 'every car faces the way it goes');
+    const back = Trains.stepPoint(w, tr.steps[0], tr.pos);
+    assert.ok(Math.cos(back.heading) < 0, 'going back the way it came');
+    assert.ok(Math.cos(tr.parts[0].heading) < 0, 'the engine faces that way too');
+    // Wagons bought later go behind the last wagon, not in front of the engine.
+    tr.state = 'depot';
+    const coachesBefore = tr.cars.length;
+    assert.equal(Vehicles.addWagon(w, tr, coach.id), null);
+    assert.equal(tr.cars.length, coachesBefore + 1);
+    assert.ok(!World.ENGINE[tr.cars[0].engine].wagon && World.ENGINE[tr.cars[tr.cars.length - 1].engine].wagon, 'engine first, new wagon last');
+});
+
+test('кнопка Turn around: автобус разворачивается на следующей клетке', () => {
+    const w = flatWorld(), m = w.map;
+    must(Commands.run(w, ex => Commands.buildLongRoad(w, Commands.roadDrag(m, { fx: 10.1, fy: 20.5 }, { fx: 40.9, fy: 20.5 }, 0), ex), true));
+    must(Commands.run(w, ex => Commands.buildDepot(w, idx(w, 12, 21), 'road', Dir.NW, 0, ex), true));
+    must(Commands.run(w, ex => Commands.buildRoad(w, idx(w, 12, 20), 2, ex), true));
+    must(Commands.run(w, ex => Commands.buildRoadStop(w, idx(w, 38, 20), 0, false, ex), true));
+    const bus = Vehicles.build(w, engineByName('MPS Regal Bus').id, 0);
+    bus.orders = [{ kind: 'station', dest: 0 }];
+    bus.stopped = false;
+    for (let i = 0; i < 74 * 6; i++) w.tick();
+    assert.equal(bus.state, 'run');
+    const x0 = bus.x;
+    bus.turnAround = true;
+    for (let i = 0; i < 74 * 4; i++) w.tick();
+    assert.ok(!bus.turnAround, 'turned');
+    assert.ok(bus.x < x0 + 2, 'heading back');
+});
+
+test('первый поезд с 1900 года: локомотив и вагоны есть сразу, стареет он по своим датам TTD', () => {
+    for (const startYear of [1900, 1941]) {
+        const w = new World({ seed: 3, mapLog2: 6, climate: 1, startYear, towns: 0, industries: 0 }).createEmpty(1);
+        const locos = w.buyable('rail', 0).filter(e => !e.wagon);
+        assert.deepEqual(plain(locos.map(e => e.name)), ['Wills 2-8-0 (Steam)'], 'sub-tropical ' + startYear);
+        assert.ok(w.buyable('rail', 0).some(e => e.wagon && w.cargo(e.cargo).key === 'passengers'), 'coaches too');
+    }
+    // 0 — TTD's own dates: nothing before 1944.
+    const w = new World({ seed: 3, mapLog2: 6, climate: 1, startYear: 1941, towns: 0, industries: 0, firstTrainYear: 0 }).createEmpty(1);
+    assert.equal(w.buyable('rail', 0).filter(e => !e.wagon).length, 0);
+    // A 1900 game runs through the years and the engine is still there in 1930.
+    const g = new World({ seed: 3, mapLog2: 6, climate: 1, startYear: 1900, towns: 0, industries: 0 }).createEmpty(1);
+    for (let d = 0; d < 365 * 30; d += 30) { g.date += 30; g.updateEngines(false); }
+    assert.ok(g.buyable('rail', 0).some(e => e.name === 'Wills 2-8-0 (Steam)'), 'not retired early');
+});
+
+test('протяжка дороги: любые две точки курсора дают путь без ошибок (в том числе внутри одной клетки)', () => {
+    const w = flatWorld(), m = w.map;
+    let seed = 7;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) >>> 0) / 4294967296;
+    for (let i = 0; i < 3000; i++) {
+        const a = { fx: 5 + rnd() * 20, fy: 5 + rnd() * 20 };
+        const b = i % 3 === 0 ? { fx: Math.floor(a.fx) + rnd(), fy: Math.floor(a.fy) + rnd() } : { fx: 5 + rnd() * 20, fy: 5 + rnd() * 20 };
+        const list = Commands.roadPath(m, a, b);
+        assert.ok(list.length > 0 && list.every(q => q.bits > 0 && q.bits < 16), JSON.stringify([a, b]));
+        Commands.buildLongRoad(w, list, false);
+    }
+    // Inside one tile, a drag across it builds both halves along the way it went.
+    assert.equal(Commands.roadPath(m, { fx: 10.1, fy: 10.4 }, { fx: 10.9, fy: 10.6 })[0].bits, 5);
+});

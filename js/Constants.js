@@ -75,6 +75,11 @@ const TTD_WATER_LEVEL = 0.35;           // sea surface, in height levels above l
 const TTD_WATER_COLOR = 0x2f6fa8;       // sea color
 const TTD_TICK_MS = 27;                 // ms of real time per game tick at normal speed (74 ticks = 1 day)
 const TTD_FAST_FORWARD = 6;             // fast forward: game ticks per normal tick
+const TTD_EFFECTS = 1;                  // 1 — steam, smoke and sparks from vehicles (TTD's effect vehicles); 0 — none
+const TTD_STEAM_PUFF_TILES = 0.35;      // a steam engine puffs once per this many tiles travelled
+const TTD_PUFF_LIFE = 1.8;              // s: how long a puff of steam or smoke rises before it is gone
+const TTD_MUSIC = 1;                    // 1 — the 8-bit jukebox plays (Game menu: Music on/off, Next track); 0 — silent
+const TTD_VEHICLE_SOUNDS = 1;           // 1 — vehicles whistle, chuff and hoot (the building and money sounds always play)
 
 // --- TTD REMAKE: new game defaults — taken from the player's openttd.cfg (TTD.zip) ---
 const TTD_MAP_SIZE_LOG2 = 7;            // map side 2^N tiles (map_x = map_y = 7 -> 128 x 128); 6..9
@@ -105,6 +110,7 @@ const TTD_SERVICE_DAYS_AIR = 100;       // servint_aircraft
 const TTD_AUTORENEW = 1;                // replace old vehicles when they visit a depot: 0 off, 1 on
 const TTD_AUTORENEW_MONTHS = 6;         // months before the end of life that autorenew kicks in
 const TTD_AUTORENEW_MONEY = 100000;     // £ that must remain after an autorenew
+const TTD_FIRST_TRAIN_YEAR = 1900;      // the first locomotive of each climate and the rail wagons can be bought from this year (0 — TTD's own dates: sub-tropical has no locomotive before 1944)
 const TTD_GRADUAL_LOADING = 1;          // 1 — vehicles load a portion per step (gradual_loading)
 const TTD_TRAIN_ACCEL = 1;              // 1 — realistic acceleration (slopes slow heavy trains)
 const TTD_SEED = 0;                     // map seed; 0 — random every new game

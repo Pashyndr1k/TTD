@@ -8,6 +8,9 @@
 class RoadVehicle extends Vehicle {
     constructor(id, owner, engineId) {
         super(id, 'road', owner, engineId);
+        this.turnAround = false;
+        /** Gradient (levels per tile) of the piece driven before this one — for the tilt. */
+        this.gradeIn = 0;
         this.tile = -1;
         this.a = 0;
         this.b = 0;
@@ -220,6 +223,7 @@ class RoadVehicle extends Vehicle {
         }
         if (map.type[n] === GameMap.T_ROAD && map.sub[n] === GameMap.ROAD_SUB_CROSSING &&
             Trains.occupiedBy(world, n * 8 + (map.rail[n] & 1 ? 0 : 1), null)) return false;
+        this.gradeIn = this.a === this.b ? 0 : (Track.roadEdgeZ(map, t, b) - Track.roadEdgeZ(map, t, this.a)) / this.len;
         this.tile = n;
         this.a = Dir.reverse(b);
         this.b = this.chooseExit(world, n, this.a);
@@ -231,6 +235,8 @@ class RoadVehicle extends Vehicle {
     /** Exit edge on tile t for a vehicle that entered through edge a. */
     chooseExit(world, t, a) {
         const map = world.map;
+        // The player pressed "Turn around" (TTD's CmdTurnRoadVeh): U-turn on the next tile.
+        if (this.turnAround) { this.turnAround = false; this.path = null; return a; }
         const bits = Track.roadBits(map, t);
         // A road depot: in if it is the goal, otherwise turn round in front of it.
         if (map.type[t] === GameMap.T_ROAD && map.sub[t] === GameMap.ROAD_SUB_DEPOT) return a;
@@ -262,9 +268,25 @@ class RoadVehicle extends Vehicle {
         const fr = Math.max(0, Math.min(1, this.f / this.len));
         p = Track.roadPoint(map, this.tile, this.a, this.b, fr);
         const z = Track.roadZ(map, this.tile, this.a, this.b, fr);
-        const za = Track.roadEdgeZ(map, this.tile, this.a), zb = Track.roadEdgeZ(map, this.tile, this.b);
+        // Tilt from the road under the front and rear wheels (this tile's piece; the next or the
+        // last piece beyond its ends), so a vehicle eases onto and off a slope.
+        const axle = 0.14;
+        const zAt = (s) => {
+            if (this.a === this.b) return z;
+            if (s < 0) return Track.roadEdgeZ(map, this.tile, this.a) + this.gradeIn * s;
+            if (s > this.len) return Track.roadEdgeZ(map, this.tile, this.b) + this.gradeOut(world) * (s - this.len);
+            return Track.roadZ(map, this.tile, this.a, this.b, s / this.len);
+        };
+        const grade = this.a === this.b ? 0 : (zAt(this.f + axle) - zAt(this.f - axle)) / (2 * axle);
         this.x = p.x; this.y = p.y; this.z = z; this.heading = p.heading;
-        this.parts = [{ x: p.x, y: p.y, z, heading: p.heading, grade: this.a === this.b ? 0 : (zb - za) / this.len, hidden: false }];
+        this.parts = [{ x: p.x, y: p.y, z, heading: p.heading, grade, hidden: false }];
+    }
+
+    /** Gradient of the road straight ahead beyond this piece (0 at a turn or a dead end). */
+    gradeOut(world) {
+        const map = world.map, n = this.b !== this.a ? Track.roadConnects(map, this.tile, this.b) : -1;
+        if (n < 0 || !(Track.roadBits(map, n) & (1 << this.b))) return 0;
+        return Track.roadEdgeZ(map, n, this.b) - Track.roadEdgeZ(map, n, Dir.reverse(this.b));
     }
 
     requestService(world) {

@@ -35,6 +35,12 @@ class Game {
         this.hoverDirty = false;
         this._fpsT = 0;
         this._tipT = 0;
+        this._frameError = false;
+        /** The jukebox (TTD's music player): on/off, the track now playing, its sound handle. */
+        this.musicOn = (typeof TTD_MUSIC !== 'undefined' ? TTD_MUSIC : 1) === 1;
+        this.musicTrack = -1;
+        /** @type {SoundHandle | null} */
+        this.musicHandle = null;
         this.gui = new Gui(this);
         this.bindInput();
         this.newGame(World.defaultSettings());
@@ -64,6 +70,10 @@ class Game {
         this.view = World3D.createView({});
         this.view.camera.maxZ = 90000;
         this.render = new TTDRender3D(this.view, world);
+        this.render.onPuff = (v, kind, x, y) => {
+            if ((typeof TTD_VEHICLE_SOUNDS !== 'undefined' ? TTD_VEHICLE_SOUNDS : 1) && v.owner === 0) this.sfx('chuff', x, y, 0.3);
+        };
+        this._vstate = null;
         this.render.update(0, 0);
         const T = this.render.T;
         this.camera = new CameraController(this.view, { terrain: this.render.terrain, bounds: { w: world.map.W * T, h: world.map.H * T } });
@@ -101,15 +111,86 @@ class Game {
     }
 
     onWorldEvent(what, data) {
-        if (what === 'news') this.gui.onNews(data);
+        const T = this.render ? this.render.T : 64, m = this.world.map;
+        if (what === 'news') { this.gui.onNews(data); this.sfx('news'); }
         else if (what === 'year') this.saveGame(Game.AUTOSAVE_KEY);
-        else if (what === 'income') this.money('+' + Money.format(data.amount));
+        else if (what === 'income') {
+            this.money('+' + Money.format(data.amount));
+            if (data.tile >= 0) this.sfx('cash', (m.tx(data.tile) + 0.5) * T, (m.ty(data.tile) + 0.5) * T);
+        }
+        else if (what === 'crash') this.sfx('crash', data.x * T, data.y * T);
+        else if (what === 'breakdown') this.sfx('breakdown', data.x * T, data.y * T);
         else if (what === 'gameover' && data.bankrupt) this.paused = true;
+    }
+
+    // --- Sounds -------------------------------------------------------------------------------------
+
+    /**
+     * Play one of Game.SOUNDS: at world px (x, y) — heard from where the camera is, fading with
+     * distance (Sound3D) — or, without a point, as a plain 2D effect. A point far off screen is
+     * skipped without making a sound node at all.
+     */
+    sfx(name, x, y, volume) {
+        const src = Game.SOUNDS[name];
+        if (!src) return;
+        const o = { volume: volume == null ? 1 : volume };
+        if (x != null) {
+            const c = this.camera && this.camera.target;
+            const far = (typeof AUDIO_FALLOFF_MAX !== 'undefined' ? AUDIO_FALLOFF_MAX : 1024) * 1.6;
+            if (c && Math.hypot(c.x - x, c.y - y) > far / Math.max(0.25, this.camera.zoom)) return;
+            o.x = x; o.y = y;
+        }
+        Sound3D.play(src, o);
+    }
+
+    /**
+     * The jukebox: Game.MUSIC in turn, like TTD's music player; each tune plays once, then the
+     * next. The browser keeps it silent until the first click on the page.
+     */
+    updateMusic() {
+        if (!this.musicOn) { if (this.musicHandle) { this.musicHandle.stop(); this.musicHandle = null; } return; }
+        if (this.musicHandle && this.musicHandle.playing) return;
+        this.nextTrack();
+    }
+
+    nextTrack() {
+        if (this.musicHandle) this.musicHandle.stop();
+        this.musicTrack = (this.musicTrack + 1) % Game.MUSIC.length;
+        this.musicHandle = Sound3D.music(Game.MUSIC[this.musicTrack].src, { loop: false, volume: 0.7 });
+    }
+
+    /**
+     * Vehicle sounds (TTD plays them as a vehicle starts off): a steam whistle or a horn as a
+     * train leaves a station or depot, a honk for road vehicles, a foghorn for ships, a roar as an
+     * aircraft takes off. Watched from the vehicles' states, so the simulation stays silent.
+     */
+    updateVehicleSounds() {
+        const w = this.world, T = this.render.T;
+        const on = typeof TTD_VEHICLE_SOUNDS !== 'undefined' ? TTD_VEHICLE_SOUNDS : 1;
+        if (!this._vstate) this._vstate = new Map();
+        for (const v of w.vehicles) {
+            if (!v) continue;
+            const phase = v instanceof Aircraft ? v.phase : '';
+            const key = v.state + '|' + phase;
+            const was = this._vstate.get(v.id);
+            this._vstate.set(v.id, key);
+            if (!on || was == null || was === key || v.owner !== 0) continue;
+            const x = v.x * T, y = v.y * T;
+            const left = (was.startsWith('load') || was.startsWith('depot')) && v.state === 'run';
+            if (v.type === 'air') { if (phase === 'takeoff') this.sfx('plane', x, y, 0.8); continue; }
+            if (!left) continue;
+            if (v.type === 'train') {
+                const e = v.cars.map(c => World.ENGINE[c.engine]).find(e => !e.wagon);
+                this.sfx(e && /Steam/.test(e.name) ? 'whistle' : 'horn', x, y, 0.7);
+            } else if (v.type === 'road') this.sfx('bus', x, y, 0.6);
+            else if (v.type === 'ship') this.sfx('ship', x, y, 0.8);
+        }
+        if (this._vstate.size > w.vehicles.length + 50) for (const id of [...this._vstate.keys()]) if (!w.vehicles[id]) this._vstate.delete(id);
     }
 
     // --- Messages ----------------------------------------------------------------------------------
 
-    error(msg) { this.gui.error(msg); }
+    error(msg) { this.gui.error(msg); this.sfx('error'); }
     info(msg) { this.gui.error(msg); }
 
     /** A short money note next to the cost tip (TTD's floating cost text). */
@@ -119,7 +200,18 @@ class Game {
         this._tipT = 2.5;
     }
 
-    spent(cost, tile) { if (cost) this.money((cost > 0 ? '-' : '+') + Money.format(Math.abs(cost))); }
+    spent(cost, tile) {
+        if (cost) this.money((cost > 0 ? '-' : '+') + Money.format(Math.abs(cost)));
+        // Building / demolition sound, once per drag even when a drag builds many pieces.
+        const now = performance.now();
+        if (now - (this._buildSfxT || 0) < 120) return;
+        this._buildSfxT = now;
+        const name = this.tool && this.tool.name === 'demolish' ? 'demolish' : 'build';
+        if (tile != null && tile >= 0 && this.render) {
+            const m = this.world.map, T = this.render.T;
+            this.sfx(name, (m.tx(tile) + 0.5) * T, (m.ty(tile) + 0.5) * T);
+        } else this.sfx(name);
+    }
 
     /** Run a command with exec, report failure or cost. */
     run(fn) {
@@ -302,6 +394,8 @@ class Game {
         // Vehicles are drawn between the last two ticks (smooth at any frame rate).
         const alpha = this.paused ? 1 : IMath.clamp(this.acc / Game.tickMs(), 0, 1);
         this.render.update(dt, 6, alpha);
+        this.updateVehicleSounds();
+        this.updateMusic();
         if (this.hoverDirty || this.down) this.updateHover();
         this.render.setSelected(this.selected);
         if (this._tipT > 0) this._tipT -= dt;
@@ -315,5 +409,19 @@ class Game {
     }
 }
 
+/** The game's sound effects (synthesized by tools/make-sounds.mjs). */
+Game.SOUNDS = {
+    click: 'assets/sounds/click.wav', build: 'assets/sounds/build.wav', demolish: 'assets/sounds/demolish.wav',
+    cash: 'assets/sounds/cash.wav', whistle: 'assets/sounds/whistle.wav', chuff: 'assets/sounds/chuff.wav',
+    horn: 'assets/sounds/horn.wav', bus: 'assets/sounds/bus.wav', ship: 'assets/sounds/ship.wav',
+    plane: 'assets/sounds/plane.wav', crash: 'assets/sounds/crash.wav', breakdown: 'assets/sounds/breakdown.wav',
+    news: 'assets/sounds/news.wav', error: 'assets/sounds/error.wav',
+};
+/** The jukebox's tunes (8-bit, synthesized by tools/make-sounds.mjs). */
+Game.MUSIC = [
+    { name: 'Rails at Dawn', src: 'assets/sounds/music_rails.wav' },
+    { name: 'Night Freight', src: 'assets/sounds/music_night.wav' },
+    { name: 'Boomtown Rag', src: 'assets/sounds/music_rag.wav' },
+];
 Game.SAVE_KEY = 'ttd3d.save';
 Game.AUTOSAVE_KEY = 'ttd3d.autosave';

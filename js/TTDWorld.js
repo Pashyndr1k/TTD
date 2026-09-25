@@ -86,6 +86,7 @@ class World {
             autorenewMonths: typeof TTD_AUTORENEW_MONTHS !== U ? TTD_AUTORENEW_MONTHS : 6,
             autorenewMoney: typeof TTD_AUTORENEW_MONEY !== U ? TTD_AUTORENEW_MONEY : 100000,
             gradualLoading: typeof TTD_GRADUAL_LOADING !== U ? TTD_GRADUAL_LOADING : 1,
+            firstTrainYear: typeof TTD_FIRST_TRAIN_YEAR !== U ? TTD_FIRST_TRAIN_YEAR : 1900,
             trainAccel: typeof TTD_TRAIN_ACCEL !== U ? TTD_TRAIN_ACCEL : 1,
             seed: typeof TTD_SEED !== U ? TTD_SEED : 0,
             refineryLimit: 16,
@@ -298,7 +299,24 @@ class World {
                 available: false,
                 retired: false,
                 announced: false,
+                /** Buyable from this date even before its intro (the first-train setting), or null. */
+                from: null,
             };
+        }
+        // The first locomotive of the climate (normal rail) and the rail wagons are buyable from
+        // firstTrainYear. Their ageing and retirement still count from their own TTD dates.
+        const year = this.settings.firstTrainYear;
+        if (year > 0) {
+            const from = Calendar.fromYMD(year, 0, 1);
+            let first = null;
+            for (const st of this.engines) {
+                if (!st) continue;
+                const e = World.ENGINE[st.id];
+                if (e.type !== 'rail' || e.rail !== 0) continue;
+                if (e.wagon) { if (st.intro > from) st.from = from; continue; }
+                if (!first || st.intro < first.intro) first = st;
+            }
+            if (first && first.intro > from) first.from = from;
         }
         this.updateEngines(false);
     }
@@ -308,7 +326,11 @@ class World {
         for (const st of this.engines) {
             if (!st) continue;
             const months = Math.floor((this.date - st.intro) / 30.4);
-            if (months < 0) continue;
+            if (months < 0) {
+                // Early, by the first-train setting: buyable at the start of its reliability curve.
+                if (st.from != null && this.date >= st.from) { st.available = true; st.reliability = st.relStart; }
+                continue;
+            }
             if (!st.available && !st.retired) {
                 st.available = true;
                 if (news && !World.ENGINE[st.id].wagon) {

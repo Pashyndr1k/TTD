@@ -146,7 +146,7 @@ class Vehicle {
         }
     }
 
-    onBreakdown(world) { }
+    onBreakdown(world) { if (this.owner === 0) world.emit('breakdown', this); }
 
     requestService(world) { }
 
@@ -464,7 +464,11 @@ const Vehicles = {
         const price = Vehicles.price(world, e);
         if (!c.canAfford(price)) return 'Not enough cash - requires ' + Money.format(price);
         c.spend(price, Company.C_NEW_VEHICLES);
-        for (const car of Vehicles.carsFor(world, e)) train.cars.push(car);
+        // New wagons go behind the last wagon (before a rear engine head); a train reversed in an
+        // older save is put back in running order first.
+        Trains.arrange(train);
+        const at = train.cars.findIndex(c => c.rearHead);
+        train.cars.splice(at < 0 ? train.cars.length : at, 0, ...Vehicles.carsFor(world, e));
         train.value += price;
         return null;
     },

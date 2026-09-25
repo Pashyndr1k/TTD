@@ -308,8 +308,9 @@ obey the same slope and crossing rules. Towns don't build bridges.
 Vehicles are TTD's full list for the two climates, 1920–2051 (`TTDData.ENGINES`), with TTD's
 prices, running costs, speeds, power, weight, capacity and lifespans.
 
-- **Sub-tropical has no locomotive until the Wills 2-8-0** (around 1944). In your 1941 start,
-  road vehicles, ships and aircraft come first, as in the real game.
+- **Sub-tropical has no locomotive until the Wills 2-8-0** (around 1944) in TTD. The remake
+  sells each climate's first locomotive and the rail wagons from 1900 (`TTD_FIRST_TRAIN_YEAR`;
+  0 — TTD's dates). Their reliability curve and retirement still count from their TTD dates.
 - **Reliability:** each model rolls a start (48–73 %), a maximum (75–100 %) and a final value
   (25–50 %) along a lifecycle curve. Vehicles lose reliability every day and are reset by a
   depot service.
@@ -329,6 +330,20 @@ prices, running costs, speeds, power, weight, capacity and lifespans.
 - **Road vehicles** use drive-through stops (TTD has bay stops that vehicles enter and turn
   round in). They queue behind each other, wait at level crossings and turn round at dead
   ends and road works. A train hitting a road vehicle on a crossing destroys it.
+- **Reverse** (TTD's `CmdReverseTrainDirection`): a standing train reverses at once, a moving
+  one brakes to a stop first. The wagons keep their places and the engine runs round to the new
+  front, so an engine always leads. OpenTTD lets it push from the back instead. Road
+  vehicles **turn around** (TTD's `CmdTurnRoadVeh`) with a U-turn on the next tile.
+- **Tilt:** every car and road vehicle pitches by the height of the track or road under its front
+  and rear axles. It eases onto and off a slope, and a car facing backwards tilts the right way.
+- **Effects** (TTD's effect vehicles): steam puffs from steam engines, one every
+  `TTD_STEAM_PUFF_TILES` travelled. Diesels smoke as they pull away and electrics spark.
+  Broken-down and crashed vehicles smoke.
+- **Sounds** (`Game.SOUNDS`, synthesized by `tools/make-sounds.mjs`): building, demolition,
+  income (cash register), a whistle or horn as a train starts off, chuffing, bus honks,
+  foghorns, aircraft take-offs, breakdowns, crashes, the news chime, clicks and errors.
+  Music: three original 8-bit tunes (`Game.MUSIC`) from a four-voice tracker in the same tool,
+  played in turn like TTD's jukebox.
 - **Ships** sail on water tiles to the water in front of a dock.
 - **Aircraft** taxi, take off, cruise, approach and land. They need a free terminal and hold
   above the airport otherwise. Fast jets can crash on a small airport.

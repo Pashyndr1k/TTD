@@ -55,7 +55,12 @@ build.bat          # or: node tools/build.mjs          -> dist/*.zip
   2. Track: drag to lay it. Diagonal drags lay diagonal track; a click near a tile corner lays
      a corner piece, drawn as a curve. Track follows TTD's slope rules and ramps up hills.
   3. Depot next to the track.
-  4. Click the depot → New vehicles → buy an engine, then add wagons.
+  4. Click the depot → New vehicles → buy a locomotive, then add wagons. Rows say which is which:
+     TTD's wagon names ("Wood Truck", "Oil Tanker") are rail wagons, not road vehicles.
+     The first locomotive of each climate (sub-tropical: the Wills 2-8-0, temperate: the
+     Kirby Paul Tank) and the rail wagons can be bought from 1900 (`TTD_FIRST_TRAIN_YEAR`;
+     0 restores TTD's own dates, when sub-tropical has no locomotive before 1944). New games
+     can start in 1900 or 1920 too.
   5. In the train window: Go To… → click station A, Go To… → click station B, then Start.
 - **Road services:** road + bus or lorry stops + a road depot.
   - Roads work like TTD's. Drag along a row from the half tile you press to the half tile you
@@ -68,6 +73,24 @@ build.bat          # or: node tools/build.mjs          -> dist/*.zip
 - **Ships:** a dock and a ship depot on the sea.
 - **Aircraft:** buy them in an airport's hangar.
 - **Signals** split track into blocks, one train per block. Click a signal again to make it one-way.
+- **Train window:** **Reverse** turns a train round, as in TTD. A standing train reverses at
+  once; a moving one brakes to a stop first. The engine runs round to the other end so it
+  always leads, also when a train turns round at the end of a line. Road vehicles have **Turn
+  around** instead: they U-turn on the next tile. New wagons are always added behind the last
+  wagon.
+- **Sounds** (after your first click on the page, as browsers require):
+  - building and demolishing;
+  - the cash register when a vehicle earns money;
+  - a steam whistle or a horn as a train leaves a station or depot, and a steam engine's chuffing;
+  - bus honks, ship foghorns and aircraft taking off;
+  - breakdowns, crashes, the news chime, button clicks and error buzzes.
+
+  Vehicle sounds come from where they are and fade with distance from the camera.
+- **Music:** an 8-bit jukebox plays three original chiptunes in turn: "Rails at Dawn",
+  "Night Freight" and "Boomtown Rag". Switch it with Game → Music, skip with Game → Next track.
+  Set `TTD_MUSIC = 0` to start without it.
+- **Steam and smoke:** steam engines puff as they run, diesels smoke as they pull away, and
+  electric engines spark. Broken-down and crashed vehicles smoke. Every car tilts on a slope.
 - **Saves** go to the browser's local storage. The game also autosaves yearly, as in your config.
 
 ## Layout

@@ -50,7 +50,7 @@ class Gui {
         this.ngs = copy('ng', 14, (t, i) => ({ y: t.y + i * (t.h + 3) }));
     }
 
-    on(id, fn) { const e = UI.get(id); if (e) e.onClick(fn); }
+    on(id, fn) { const e = UI.get(id); if (e) e.onClick(() => { this.game.sfx('click'); fn(); }); }
     text(id, s) { const e = UI.get(id); if (e) e.setText(s); }
     show(id, on) { const e = UI.get(id); if (e) e.show(on); }
 
@@ -146,7 +146,7 @@ class Gui {
     renderBar() {
         const items = this.bar ? this.barItems() : [];
         this.bbs.forEach((b, i) => {
-            if (i < items.length) { b.setText(items[i][0]); b.onClick(() => { items[i][1](); this.renderBar(); }); b.show(true); }
+            if (i < items.length) { b.setText(items[i][0]); b.onClick(() => { this.game.sfx('click'); items[i][1](); this.renderBar(); }); b.show(true); }
             else b.show(false);
         });
         this.renderOpts();
@@ -219,12 +219,12 @@ class Gui {
         for (const r of other) r.show(false);
         set.forEach((r, i) => {
             const item = rows[page * per + i];
-            if (i < per && item) { r.setText(item[0]); r.onClick(item[1]); r.show(true); }
+            if (i < per && item) { r.setText(item[0]); r.onClick(() => { this.game.sfx('click'); item[1](); }); r.show(true); }
             else r.show(false);
         });
         const acts = d.acts || [];
         this.acts.forEach((b, i) => {
-            if (i < acts.length) { b.setText(acts[i][0]); b.onClick(() => { acts[i][1](); this.render(); }); b.show(true); }
+            if (i < acts.length) { b.setText(acts[i][0]); b.onClick(() => { this.game.sfx('click'); acts[i][1](); this.render(); }); b.show(true); }
             else b.show(false);
         });
     }
@@ -312,6 +312,8 @@ class Gui {
             ['To depot', () => { g.sendToDepot(v); }],
             ['Center', () => { g.follow(v); }],
         ];
+        if (v instanceof Train && v.state !== 'depot') acts.push([v.reversing ? 'Reversing…' : 'Reverse', () => { const err = v.requestReverse(w); if (err) g.error(err); }]);
+        if (v instanceof RoadVehicle && v.state !== 'depot') acts.push(['Turn around', () => { v.turnAround = true; }]);
         if (v.state === 'depot') {
             acts.push(['Sell', () => { const err = Vehicles.sell(w, v); if (err) g.error(err); else { this.close(); g.money('+' + Money.format(v.value)); } }]);
             if (v.type === 'train') acts.push(['Add wagons', () => { this.open('depot', v.type === 'air' ? -1 : v.depot); this.win.tab = 1; this.win.train = v.id; this.render(); }]);
@@ -344,9 +346,32 @@ class Gui {
         const railType = depot && depot.kind === 'rail' ? w.map.railType[depot.t] : null;
         let list = w.buyable(type, railType);
         if (type === 'air' && hangar && hangar.airport && hangar.airport.type === 2) list = list.filter(e => e.heli);
+        // Trains: locomotives first, then wagons (TTD's wagon names — "Wood Truck", "Oil Tanker" —
+        // are rail wagons, so each row says which it is).
+        if (type === 'rail') list = list.filter(e => !e.wagon).concat(list.filter(e => e.wagon));
         const trains = /** @type {Train[]} */ (inside.filter(v => v instanceof Train && v.hasEngine()));
         const target = trains.find(v => v.id === this.win.train) || trains[trains.length - 1];
-        const rows = list.map((e, i) => [e.name + ' — ' + Money.format(Vehicles.price(w, e)), () => { this.win.sel = i; this.render(); }]);
+        const rows = list.map((e, i) => [(type === 'rail' ? (e.wagon ? 'Wagon: ' : 'Locomotive: ') : '') + e.name + ' — ' + Money.format(Vehicles.price(w, e)), () => { this.win.sel = i; this.render(); }]);
+        let text = '';
+        if (type === 'rail' && !list.some(e => !e.wagon)) {
+            // No locomotive yet (sub-tropical has none before the Wills 2-8-0, 1944–45).
+            let next = null;
+            for (const st of w.engines) {
+                if (!st || st.available) continue;
+                const f = World.ENGINE[st.id];
+                if (f.type !== 'rail' || f.wagon || !Vehicles.railCompatible(f.rail, railType)) continue;
+                if (!next || st.intro < next.intro) next = { name: f.name, intro: st.intro };
+            }
+            text = 'No locomotives are available yet, only wagons.' + (next ? ' The first one, ' + next.name + ', arrives around ' +
+                Calendar.format(next.intro, true) + '.' : '') + ' Until then use road vehicles, ships or aircraft, or start a new game in a later year.';
+            // Window text doesn't wrap: break it into lines.
+            const lines = [];
+            let line = '';
+            for (const word of text.split(' ')) {
+                if (line && (line + ' ' + word).length > 50) { lines.push(line); line = word; } else line = line ? line + ' ' + word : word;
+            }
+            text = lines.concat(line).join('\n') + '\n\n';
+        }
         const e = list[this.win.sel];
         let info = 'Select a vehicle to see its details.';
         if (e) {
@@ -373,7 +398,7 @@ class Gui {
             this.win.train = v.id;
             if (v.type !== 'train') this.open('vehicle', v.id);
         }]);
-        return { title, text: '', rows, info, acts };
+        return { title, text: '', rows, info: text + info, acts };
     }
 
     vStation(id) {
@@ -585,6 +610,8 @@ class Gui {
                 [(auto ? '' : '(no autosave) ') + 'Load autosave', () => { if (g.loadGame(Game.AUTOSAVE_KEY)) this.close(); }],
                 ['Currency: ' + Money.CURRENCIES[Money.currency].id, () => { Money.currency = (Money.currency + 1) % Money.CURRENCIES.length; this.world.settings.currency = Money.currency; this.render(); }],
                 ['Game speed: fast forward x' + g.ffMult, () => { g.ffMult = g.ffMult >= 16 ? 2 : g.ffMult * 2; this.render(); }],
+                ['Music: ' + (g.musicOn ? 'on' + (g.musicTrack >= 0 ? ' — ' + Game.MUSIC[g.musicTrack].name : '') : 'off'), () => { g.musicOn = !g.musicOn; this.render(); }],
+                ['Next track', () => { g.musicOn = true; g.nextTrack(); this.render(); }],
                 ['Help and keys', () => this.open('help')],
             ],
         };
@@ -680,7 +707,7 @@ class Gui {
         const items = [
             ['Climate: ' + TTDData.CLIMATE_NAMES[s.climate], cyc('climate', 2)],
             ['Map size: ' + (1 << s.mapLog2) + ' x ' + (1 << s.mapLog2), () => { s.mapLog2 = s.mapLog2 >= 8 ? 6 : s.mapLog2 + 1; this.renderNewGame(); }],
-            ['Start year: ' + s.startYear, () => { const Y = [1930, 1941, 1950, 1960, 1970, 1980, 1990, 2000]; s.startYear = Y[(Y.indexOf(s.startYear) + 1) % Y.length] || 1950; this.renderNewGame(); }],
+            ['Start year: ' + s.startYear, () => { const Y = [1900, 1920, 1930, 1941, 1950, 1960, 1970, 1980, 1990, 2000]; s.startYear = Y[(Y.indexOf(s.startYear) + 1) % Y.length] || 1950; this.renderNewGame(); }],
             ['Number of towns: ' + L(['Low', 'Normal', 'High'], s.towns), cyc('towns', 3)],
             ['Number of industries: ' + L(['None', 'Low', 'Normal', 'High'], s.industries), cyc('industries', 4)],
             ['Terrain: ' + L(['Very flat', 'Flat', 'Hilly', 'Mountainous'], s.terrain), cyc('terrain', 4)],
