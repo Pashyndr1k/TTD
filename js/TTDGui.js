@@ -705,7 +705,7 @@ class Gui {
         const items = [
             ['Climate: ' + TTDData.CLIMATE_NAMES[s.climate], cyc('climate', 2)],
             ['Map size: ' + (1 << s.mapLog2) + ' x ' + (1 << s.mapLog2), () => { s.mapLog2 = s.mapLog2 >= 8 ? 6 : s.mapLog2 + 1; this.renderNewGame(); }],
-            ['Start year: ' + s.startYear, () => { const Y = [1930, 1941, 1950, 1960, 1970, 1980, 1990, 2000]; s.startYear = Y[(Y.indexOf(s.startYear) + 1) % Y.length] || 1950; this.renderNewGame(); }],
+            ['Start year: ' + s.startYear, () => { const Y = [1900, 1920, 1930, 1941, 1950, 1960, 1970, 1980, 1990, 2000]; s.startYear = Y[(Y.indexOf(s.startYear) + 1) % Y.length] || 1950; this.renderNewGame(); }],
             ['Number of towns: ' + L(['Low', 'Normal', 'High'], s.towns), cyc('towns', 3)],
             ['Number of industries: ' + L(['None', 'Low', 'Normal', 'High'], s.industries), cyc('industries', 4)],
             ['Terrain: ' + L(['Very flat', 'Flat', 'Hilly', 'Mountainous'], s.terrain), cyc('terrain', 4)],

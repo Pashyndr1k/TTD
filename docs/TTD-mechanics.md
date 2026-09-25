@@ -308,8 +308,9 @@ obey the same slope and crossing rules. Towns don't build bridges.
 Vehicles are TTD's full list for the two climates, 1920–2051 (`TTDData.ENGINES`), with TTD's
 prices, running costs, speeds, power, weight, capacity and lifespans.
 
-- **Sub-tropical has no locomotive until the Wills 2-8-0** (around 1944). In your 1941 start,
-  road vehicles, ships and aircraft come first, as in the real game.
+- **Sub-tropical has no locomotive until the Wills 2-8-0** (around 1944) in TTD. The remake
+  sells each climate's first locomotive and the rail wagons from 1900 (`TTD_FIRST_TRAIN_YEAR`;
+  0 — TTD's dates). Their reliability curve and retirement still count from their TTD dates.
 - **Reliability:** each model rolls a start (48–73 %), a maximum (75–100 %) and a final value
   (25–50 %) along a lifecycle curve. Vehicles lose reliability every day and are reset by a
   depot service.

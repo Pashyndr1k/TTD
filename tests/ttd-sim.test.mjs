@@ -445,3 +445,19 @@ test('кнопка Turn around: автобус разворачивается н
     assert.ok(!bus.turnAround, 'turned');
     assert.ok(bus.x < x0 + 2, 'heading back');
 });
+
+test('первый поезд с 1900 года: локомотив и вагоны есть сразу, стареет он по своим датам TTD', () => {
+    for (const startYear of [1900, 1941]) {
+        const w = new World({ seed: 3, mapLog2: 6, climate: 1, startYear, towns: 0, industries: 0 }).createEmpty(1);
+        const locos = w.buyable('rail', 0).filter(e => !e.wagon);
+        assert.deepEqual(plain(locos.map(e => e.name)), ['Wills 2-8-0 (Steam)'], 'sub-tropical ' + startYear);
+        assert.ok(w.buyable('rail', 0).some(e => e.wagon && w.cargo(e.cargo).key === 'passengers'), 'coaches too');
+    }
+    // 0 — TTD's own dates: nothing before 1944.
+    const w = new World({ seed: 3, mapLog2: 6, climate: 1, startYear: 1941, towns: 0, industries: 0, firstTrainYear: 0 }).createEmpty(1);
+    assert.equal(w.buyable('rail', 0).filter(e => !e.wagon).length, 0);
+    // A 1900 game runs through the years and the engine is still there in 1930.
+    const g = new World({ seed: 3, mapLog2: 6, climate: 1, startYear: 1900, towns: 0, industries: 0 }).createEmpty(1);
+    for (let d = 0; d < 365 * 30; d += 30) { g.date += 30; g.updateEngines(false); }
+    assert.ok(g.buyable('rail', 0).some(e => e.name === 'Wills 2-8-0 (Steam)'), 'not retired early');
+});

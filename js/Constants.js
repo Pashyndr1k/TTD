@@ -109,6 +109,7 @@ const TTD_SERVICE_DAYS_AIR = 100;       // servint_aircraft
 const TTD_AUTORENEW = 1;                // replace old vehicles when they visit a depot: 0 off, 1 on
 const TTD_AUTORENEW_MONTHS = 6;         // months before the end of life that autorenew kicks in
 const TTD_AUTORENEW_MONEY = 100000;     // £ that must remain after an autorenew
+const TTD_FIRST_TRAIN_YEAR = 1900;      // the first locomotive of each climate and the rail wagons can be bought from this year (0 — TTD's own dates: sub-tropical has no locomotive before 1944)
 const TTD_GRADUAL_LOADING = 1;          // 1 — vehicles load a portion per step (gradual_loading)
 const TTD_TRAIN_ACCEL = 1;              // 1 — realistic acceleration (slopes slow heavy trains)
 const TTD_SEED = 0;                     // map seed; 0 — random every new game
