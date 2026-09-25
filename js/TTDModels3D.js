@@ -770,6 +770,20 @@ const Models = {
     },
 
     /** Model kind of an engine (and the cargo colour of a car). */
+    /** A unit puff of steam or smoke (radius 1, low-poly): scaled per copy by the effects. */
+    puff(b, col) {
+        // An icosahedron.
+        const t = (1 + Math.sqrt(5)) / 2, k = 1 / Math.hypot(1, t);
+        const V = [[-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0], [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t], [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1]]
+            .map(v => [v[0] * k, v[1] * k, v[2] * k]);
+        const F = [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
+            [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]];
+        for (const [a, c, d] of F) {
+            const n = [(V[a][0] + V[c][0] + V[d][0]) / 3, (V[a][1] + V[c][1] + V[d][1]) / 3, (V[a][2] + V[c][2] + V[d][2]) / 3];
+            b.tri(V[a], V[c], V[d], null, null, null, col, n);
+        }
+    },
+
     vehicleKind(world, e, car) {
         const cargo = car && car.slot >= 0 ? world.cargo(car.slot) : null;
         const key = cargo ? cargo.key : '';

@@ -40,6 +40,9 @@ class TTDRender3D {
         this.vehicleGroups = new Map();
         this.signalGroups = null;
         this._sigTimer = 0;
+        /** Called when a steam engine puffs: (vehicle, kind, x, y) in world px — the game chuffs. */
+        /** @type {((v: any, kind: string, x: number, y: number) => void) | null} */
+        this.onPuff = null;
         this.overlays = [];
         this._buildOverlayMaterials();
         this.cursor = this._makeCursor();
@@ -174,6 +177,7 @@ class TTDRender3D {
         }
         if (this.treesDirty) this.rebuildTrees();
         this.updateVehicles(alpha == null ? 1 : alpha);
+        this.updateEffects(dt);
         this._sigTimer -= dt;
         if (this._sigTimer <= 0) { this._sigTimer = 0.2; this.updateSignals(); }
     }
@@ -440,6 +444,106 @@ class TTDRender3D {
             }
         }
         for (const g of this.vehicleGroups.values()) g.inst.setAll(g.items);
+    }
+
+    // --- Steam, smoke and sparks (TTD's effect vehicles) --------------------------------------------------
+
+    /**
+     * Puffs rise from vehicles: white steam from steam engines (one per TTD_STEAM_PUFF_TILES
+     * travelled, a wisp now and then while standing), dark smoke from diesels pulling away and from
+     * broken-down or crashed vehicles, sparks at electric pantographs. Presentation only — kept
+     * here, never in the world. onPuff(v, kind, x, y) lets the game chuff along.
+     */
+    updateEffects(dt) {
+        const U = 'undefined';
+        const on = typeof TTD_EFFECTS !== U ? TTD_EFFECTS : 1;
+        const per = typeof TTD_STEAM_PUFF_TILES !== U ? TTD_STEAM_PUFF_TILES : 0.35;
+        const life = typeof TTD_PUFF_LIFE !== U ? TTD_PUFF_LIFE : 1.8;
+        const T = this.T, L = this.L, w = this.world;
+        if (!this.fx) {
+            const make = (name, col, emissive) => {
+                const b = new MeshData();
+                Models.puff(b, Models.C(col));
+                const mesh = b.toMesh(name, this.scene);
+                const mat = new BABYLON.StandardMaterial(name + 'Mat', this.scene);
+                mat.diffuseColor = new BABYLON.Color3(1, 1, 1);
+                if (emissive) { mat.disableLighting = true; mat.emissiveColor = BABYLON.Color3.FromHexString(col); }
+                else mat.emissiveColor = new BABYLON.Color3(0.35, 0.35, 0.35);
+                mesh.material = mat;
+                mesh.isPickable = false;
+                return World3D.addInstances(this.view, mesh, 'prop', [], { ink: false, outline: false, castShadow: false, dynamic: true });
+            };
+            this.fx = { steam: make('ttdSteam', '#f4f4f0', false), smoke: make('ttdSmoke', '#4a4a4c', false), spark: make('ttdSpark', '#fff4a0', true) };
+            this.puffs = [];
+            this.fxState = new Map();
+        }
+        dt = Math.min(dt, 0.1);
+        const spawn = (kind, x, y, h, size, up) => {
+            if (this.puffs.length > 600) return;
+            this.puffs.push({ kind, x, y, h, vx: (Math.random() - 0.5) * 6 + 5, vy: (Math.random() - 0.5) * 6 - 3, vh: up, age: 0, life: kind === 'spark' ? 0.12 : life * (0.8 + Math.random() * 0.4), size });
+        };
+        if (on) {
+            for (const v of w.vehicles) {
+                if (!v || v.state === 'depot' || !v.parts || !v.parts.length) continue;
+                const p0 = v.parts[0];
+                if (!p0 || p0.hidden) continue;
+                let st = this.fxState.get(v.id);
+                if (!st) { st = { x: p0.x, y: p0.y, acc: 0, idle: Math.random() * 2, sp: 0 }; this.fxState.set(v.id, st); }
+                const moved = Math.min(2, Math.hypot(p0.x - st.x, p0.y - st.y));
+                st.x = p0.x; st.y = p0.y;
+                if (v.state === 'crashed' || v.broken > 0) {
+                    st.acc += dt * (v.state === 'crashed' ? 6 : 3);
+                    for (let n = 0; st.acc >= 1 && n < 3; n++) { st.acc -= 1; spawn('smoke', p0.x * T, p0.y * T, p0.z * L + T * 0.25, T * 0.07, T * 0.5); }
+                    continue;
+                }
+                if (v.type !== 'train') continue;
+                // The engine: the first car with an engine (after a reversal it may be the last).
+                let ei = -1;
+                for (let i = 0; i < v.cars.length; i++) if (!World.ENGINE[v.cars[i].engine].wagon) { ei = i; break; }
+                const p = v.parts[ei];
+                if (ei < 0 || !p || p.hidden) continue;
+                const kind = Models.vehicleKind(w, World.ENGINE[v.cars[ei].engine], v.cars[ei]);
+                const fx = p.x * T + Math.cos(p.heading) * T * 0.16, fy = p.y * T + Math.sin(p.heading) * T * 0.16;
+                const top = p.z * L + 0.5 + T * 0.3;
+                if (kind === 'steam') {
+                    st.acc += moved / per + (moved < 1e-4 ? dt * 0.35 : 0);
+                    for (let n = 0; st.acc >= 1 && n < 3; n++) {
+                        st.acc -= 1;
+                        spawn('steam', fx, fy, top, T * 0.085, T * (0.45 + Math.min(1, v.speed / 80) * 0.4));
+                        if (this.onPuff && moved > 1e-4) this.onPuff(v, 'steam', fx, fy);
+                    }
+                } else if (kind === 'diesel' || kind === 'dmu') {
+                    // Smoke while pulling away (speed rising and still low).
+                    if (v.speed > st.sp && v.speed < 60) {
+                        st.acc += dt * 5;
+                        for (let n = 0; st.acc >= 1 && n < 2; n++) { st.acc -= 1; spawn('smoke', p.x * T, p.y * T, p.z * L + T * 0.26, T * 0.04, T * 0.35); }
+                    }
+                } else if (kind === 'electric' && moved > 1e-3 && Math.random() < dt * 1.5) {
+                    spawn('spark', p.x * T, p.y * T, p.z * L + T * 0.36, T * 0.05, 0);
+                }
+                st.sp = v.speed;
+            }
+            if (this.fxState.size > w.vehicles.length * 2 + 50) {
+                for (const id of [...this.fxState.keys()]) if (!w.vehicles[id]) this.fxState.delete(id);
+            }
+        }
+        const items = { steam: [], smoke: [], spark: [] };
+        const keep = [];
+        for (const q of this.puffs) {
+            q.age += dt;
+            if (q.age >= q.life) continue;
+            q.x += q.vx * dt; q.y += q.vy * dt; q.h += q.vh * dt;
+            q.vh *= 1 - dt * 0.6;
+            const f = q.age / q.life;
+            // Grows as it rises, shrinks away at the end.
+            const s = q.kind === 'spark' ? q.size : q.size * (1 + f * 2.6) * (f > 0.75 ? (1 - f) / 0.25 : 1);
+            items[q.kind].push({ x: q.x, y: q.y, h: q.h, heading: q.age * 0.7, scale: s });
+            keep.push(q);
+        }
+        this.puffs = keep;
+        this.fx.steam.setAll(items.steam);
+        this.fx.smoke.setAll(items.smoke);
+        this.fx.spark.setAll(items.spark);
     }
 
     // --- Overlays ---------------------------------------------------------------------------------------

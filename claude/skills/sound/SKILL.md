@@ -116,8 +116,10 @@ starts unchecked — the editor is silent until you ask it to play.
 Ordinary assets — put `.wav`, `.mp3` or `.ogg` there and the editor's Sound tab lists them
 (a click auditions one), while the Objects tab offers them for an object's `sound` field.
 
-`step.wav` is SYNTHESIZED by `tools/make-sounds.mjs` — no recording, no licence questions;
-replace it with a real one. The tool owns only the files it generates and never touches the rest.
+`step.wav` and the TTD remake's effects (`click`, `build`, `demolish`, `cash`, `whistle`, `chuff`,
+`horn`, `bus`, `ship`, `plane`, `crash`, `breakdown`, `news`, `error` — `Game.SOUNDS`) are
+SYNTHESIZED by `tools/make-sounds.mjs` — no recording, no licence questions; replace them with
+real ones. The tool owns only the files it generates and never touches the rest.
 
 ```
 node tools/make-sounds.mjs          # write the files

@@ -50,7 +50,7 @@ class Gui {
         this.ngs = copy('ng', 14, (t, i) => ({ y: t.y + i * (t.h + 3) }));
     }
 
-    on(id, fn) { const e = UI.get(id); if (e) e.onClick(fn); }
+    on(id, fn) { const e = UI.get(id); if (e) e.onClick(() => { this.game.sfx('click'); fn(); }); }
     text(id, s) { const e = UI.get(id); if (e) e.setText(s); }
     show(id, on) { const e = UI.get(id); if (e) e.show(on); }
 
@@ -146,7 +146,7 @@ class Gui {
     renderBar() {
         const items = this.bar ? this.barItems() : [];
         this.bbs.forEach((b, i) => {
-            if (i < items.length) { b.setText(items[i][0]); b.onClick(() => { items[i][1](); this.renderBar(); }); b.show(true); }
+            if (i < items.length) { b.setText(items[i][0]); b.onClick(() => { this.game.sfx('click'); items[i][1](); this.renderBar(); }); b.show(true); }
             else b.show(false);
         });
         this.renderOpts();
@@ -219,12 +219,12 @@ class Gui {
         for (const r of other) r.show(false);
         set.forEach((r, i) => {
             const item = rows[page * per + i];
-            if (i < per && item) { r.setText(item[0]); r.onClick(item[1]); r.show(true); }
+            if (i < per && item) { r.setText(item[0]); r.onClick(() => { this.game.sfx('click'); item[1](); }); r.show(true); }
             else r.show(false);
         });
         const acts = d.acts || [];
         this.acts.forEach((b, i) => {
-            if (i < acts.length) { b.setText(acts[i][0]); b.onClick(() => { acts[i][1](); this.render(); }); b.show(true); }
+            if (i < acts.length) { b.setText(acts[i][0]); b.onClick(() => { this.game.sfx('click'); acts[i][1](); this.render(); }); b.show(true); }
             else b.show(false);
         });
     }
@@ -312,6 +312,8 @@ class Gui {
             ['To depot', () => { g.sendToDepot(v); }],
             ['Center', () => { g.follow(v); }],
         ];
+        if (v instanceof Train && v.state !== 'depot') acts.push([v.reversing ? 'Reversing…' : 'Reverse', () => { const err = v.requestReverse(w); if (err) g.error(err); }]);
+        if (v instanceof RoadVehicle && v.state !== 'depot') acts.push(['Turn around', () => { v.turnAround = true; }]);
         if (v.state === 'depot') {
             acts.push(['Sell', () => { const err = Vehicles.sell(w, v); if (err) g.error(err); else { this.close(); g.money('+' + Money.format(v.value)); } }]);
             if (v.type === 'train') acts.push(['Add wagons', () => { this.open('depot', v.type === 'air' ? -1 : v.depot); this.win.tab = 1; this.win.train = v.id; this.render(); }]);

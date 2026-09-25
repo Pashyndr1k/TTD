@@ -329,6 +329,17 @@ prices, running costs, speeds, power, weight, capacity and lifespans.
 - **Road vehicles** use drive-through stops (TTD has bay stops that vehicles enter and turn
   round in). They queue behind each other, wait at level crossings and turn round at dead
   ends and road works. A train hitting a road vehicle on a crossing destroys it.
+- **Reverse** (TTD's `CmdReverseTrainDirection`): a standing train reverses at once, a moving
+  one brakes to a stop first. The consist flips, so the engine pushes from the back. Road
+  vehicles **turn around** (TTD's `CmdTurnRoadVeh`) with a U-turn on the next tile.
+- **Tilt:** every car and road vehicle pitches by the height of the track or road under its front
+  and rear axles. It eases onto and off a slope, and a car facing backwards tilts the right way.
+- **Effects** (TTD's effect vehicles): steam puffs from steam engines, one every
+  `TTD_STEAM_PUFF_TILES` travelled. Diesels smoke as they pull away and electrics spark.
+  Broken-down and crashed vehicles smoke.
+- **Sounds** (`Game.SOUNDS`, synthesized by `tools/make-sounds.mjs`): building, demolition,
+  income (cash register), a whistle or horn as a train starts off, chuffing, bus honks,
+  foghorns, aircraft take-offs, breakdowns, crashes, the news chime, clicks and errors.
 - **Ships** sail on water tiles to the water in front of a dock.
 - **Aircraft** taxi, take off, cruise, approach and land. They need a free terminal and hold
   above the airport otherwise. Fast jets can crash on a small airport.

@@ -72,6 +72,19 @@ build.bat          # or: node tools/build.mjs          -> dist/*.zip
 - **Ships:** a dock and a ship depot on the sea.
 - **Aircraft:** buy them in an airport's hangar.
 - **Signals** split track into blocks, one train per block. Click a signal again to make it one-way.
+- **Train window:** **Reverse** turns a train round, as in TTD. A standing train reverses at
+  once; a moving one brakes to a stop first and then backs out, its engine pushing from the
+  back. Road vehicles have **Turn around** instead: they U-turn on the next tile.
+- **Sounds** (after your first click on the page, as browsers require):
+  - building and demolishing;
+  - the cash register when a vehicle earns money;
+  - a steam whistle or a horn as a train leaves a station or depot, and a steam engine's chuffing;
+  - bus honks, ship foghorns and aircraft taking off;
+  - breakdowns, crashes, the news chime, button clicks and error buzzes.
+
+  Vehicle sounds come from where they are and fade with distance from the camera.
+- **Steam and smoke:** steam engines puff as they run, diesels smoke as they pull away, and
+  electric engines spark. Broken-down and crashed vehicles smoke. Every car tilts on a slope.
 - **Saves** go to the browser's local storage. The game also autosaves yearly, as in your config.
 
 ## Layout

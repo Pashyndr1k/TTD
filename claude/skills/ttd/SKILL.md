@@ -71,7 +71,13 @@ formula and says what is implemented or left out.
    `railSlopeCheck` / `railTop`; plain track ends sit at `edgeMaxZ`. Corner pieces and road
    turns are curves from `Track.curve` — the renderer and the vehicles use the same one. On a road tile, `density` holds the
    roadside (low 3 bits, `GameMap.RS_*`) and the road works counter (high 4 bits).
-8. **Tunable numbers are `TTD_*` constants** in `Constants.js` with a row in the editor schema
+8. **Sound and effects are presentation.** The simulation never plays a sound: `Game` hears
+   world events (`income`, `crash`, `breakdown`, `news`) and watches vehicle state changes
+   (`updateVehicleSounds`) to play `Game.SOUNDS` through `Game.sfx` (spatial, skipped far off
+   screen). The files are synthesized by `tools/make-sounds.mjs` (skill `sound`). Steam, smoke
+   and sparks live in `TTDRender3D.updateEffects` (instanced puffs); it calls `onPuff` so the
+   game can chuff.
+9. **Tunable numbers are `TTD_*` constants** in `Constants.js` with a row in the editor schema
    (`ttd-world`, `ttd-newgame` groups); TTD's own tables stay in `TTDData.js`.
 
 ## Adding things

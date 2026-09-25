@@ -146,7 +146,7 @@ class Vehicle {
         }
     }
 
-    onBreakdown(world) { }
+    onBreakdown(world) { if (this.owner === 0) world.emit('breakdown', this); }
 
     requestService(world) { }
 

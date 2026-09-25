@@ -18,6 +18,20 @@ class Train extends Vehicle {
         this.lost = false;
         this.leftStation = -1;
         this._peek = null;
+        /** The player pressed Reverse: brake to a stand, then reverse (TTD's VRF_REVERSING). */
+        this.reversing = false;
+    }
+
+    /**
+     * TTD's CmdReverseTrainDirection: a standing train reverses at once, a moving one brakes to a
+     * stop first. Returns an error text or ''.
+     */
+    requestReverse(world) {
+        if (this.state === 'depot') return 'Can\'t reverse a train in a depot';
+        if (this.state === 'crashed') return 'Train is destroyed';
+        if (this.state === 'run' && (this.stopped || this.speed === 0)) { this.reverse(world); return ''; }
+        this.reversing = !this.reversing;
+        return '';
     }
 
     get length() { return this.cars.length * Vehicles.CAR_LEN; }
@@ -139,6 +153,14 @@ class Train extends Vehicle {
 
     move(world) {
         const K = Vehicles.K;
+        if (this.reversing) {
+            // Brake, then back out the way it came.
+            this.speed = Math.max(0, this.speed - Math.max(5, this.maxSpeed() / 30));
+            if (this.speed > 0) { this.advance(world, this.speed * K); return; }
+            this.reversing = false;
+            this.reverse(world);
+            return;
+        }
         const vmax = this.speedLimit(world);
         const decel = Math.max(5, vmax / 30);
         const lim = this.distanceToObstacle(world);
@@ -368,17 +390,29 @@ class Train extends Vehicle {
 
     // --- Car positions -------------------------------------------------------------------------
 
+    /** Point of the track `back` tiles behind the front of the train, or null past its tail. */
+    pointBehind(world, back) {
+        let d = this.pos - back, k = 0;
+        while (d < 0 && k + 1 < this.steps.length) { k++; d += this.steps[k].len; }
+        if (d < 0 || !this.steps.length) return null;
+        return Trains.stepPoint(world, this.steps[k], d);
+    }
+
     updateParts(world) {
-        const n = this.cars.length;
+        const n = this.cars.length, C = Vehicles.CAR_LEN, axle = C * 0.3;
         if (this.parts.length !== n) this.parts = this.cars.map(() => ({ x: 0, y: 0, z: 0, heading: 0, grade: 0, hidden: true }));
         for (let i = 0; i < n; i++) {
             const p = this.parts[i];
-            let d = this.pos - (i + 0.5) * Vehicles.CAR_LEN, k = 0;
-            while (d < 0 && k + 1 < this.steps.length) { k++; d += this.steps[k].len; }
-            if (d < 0 || !this.steps.length) { p.hidden = true; continue; }
-            const pt = Trains.stepPoint(world, this.steps[k], d);
-            p.x = pt.x; p.y = pt.y; p.z = pt.z; p.grade = pt.grade;
-            p.heading = pt.heading + (this.cars[i].rearHead ? Math.PI : 0) + (this.cars[i].flip ? Math.PI : 0);
+            const pt = this.pointBehind(world, (i + 0.5) * C);
+            if (!pt) { p.hidden = true; continue; }
+            const turned = !!this.cars[i].rearHead !== !!this.cars[i].flip;
+            p.x = pt.x; p.y = pt.y; p.z = pt.z;
+            p.heading = pt.heading + (turned ? Math.PI : 0);
+            // Tilt from the track under the front and rear axles: smooth over the start and end of a
+            // slope; a car facing backwards tilts the other way.
+            const f = this.pointBehind(world, (i + 0.5) * C - axle), r = this.pointBehind(world, (i + 0.5) * C + axle);
+            const grade = f && r ? (f.z - r.z) / (2 * axle) : pt.grade;
+            p.grade = turned ? -grade : grade;
             p.hidden = !!pt.tunnel;
         }
         if (this.parts[0]) { this.x = this.parts[0].x; this.y = this.parts[0].y; this.z = this.parts[0].z; this.heading = this.parts[0].heading; }

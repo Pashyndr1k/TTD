@@ -390,3 +390,58 @@ test('карта: каждая новая игра — новая карта, г
         assert.ok(high / land <= 0.3, 'mountains ' + (high / land * 100).toFixed(1) + '% (seed ' + seed + ')');
     }
 });
+
+test('кнопка Reverse: едущий поезд тормозит и едет обратно, паровоз толкает; наклон вагонов на уклоне', () => {
+    // Track along row 20 up a ramp (tile 29 is an incline up to level 2), a station at the top.
+    const w = flatWorld(), m = w.map, Trains = page.get('Trains');
+    for (let x = 30; x <= 55; x++) for (let y = 18; y <= 23; y++) m.hc[y * m.CW + x] = 2;
+    for (let x = 10; x <= 44; x++) must(Commands.run(w, ex => Commands.buildRail(w, idx(w, x, 20), Track.X, 0, ex), true));
+    must(Commands.run(w, ex => Commands.buildRailStation(w, idx(w, 45, 20), 0, 1, 3, 0, ex), true));
+    must(Commands.run(w, ex => Commands.buildRail(w, idx(w, 9, 20), Track.LOWER, 0, ex), true));
+    must(Commands.run(w, ex => Commands.buildDepot(w, idx(w, 9, 21), 'rail', Dir.NW, 0, ex), true));
+    const tr = Vehicles.build(w, engineByName('Kirby Paul Tank (Steam)').id, 0);
+    const coach = w.buyable('rail', 0).find(e => e.wagon && w.cargo(e.cargo).key === 'passengers');
+    for (let i = 0; i < 2; i++) Vehicles.addWagon(w, tr, coach.id);
+    tr.orders = [{ kind: 'station', dest: 0 }];
+    tr.stopped = false;
+    let up = null;
+    for (let i = 0; i < 74 * 40 && !up; i++) {
+        w.tick();
+        const p = tr.parts[0];
+        if (tr.state === 'run' && p && !p.hidden && p.x > 29.3 && p.x < 29.7) up = { grade: p.grade, dir: Math.cos(p.heading) };
+    }
+    assert.ok(up, 'the train reached the ramp');
+    assert.ok(up.grade > 0 && up.dir > 0, 'climbing: nose up');
+    // Reverse while moving: it brakes, stops, then heads back (-x) with the engine at the back.
+    for (let i = 0; i < 20; i++) w.tick();
+    assert.ok(tr.speed > 0, 'moving');
+    assert.equal(tr.requestReverse(w), '');
+    let stood = false;
+    for (let i = 0; i < 74 * 10 && tr.reversing; i++) { w.tick(); if (tr.speed === 0) stood = true; }
+    assert.ok(!tr.reversing && stood, 'stopped, then reversed');
+    const engine = tr.cars.findIndex(c => !World.ENGINE[c.engine].wagon);
+    assert.equal(engine, tr.cars.length - 1, 'the engine is now at the back, pushing');
+    const back = Trains.stepPoint(w, tr.steps[0], tr.pos);
+    assert.ok(Math.cos(back.heading) < 0, 'going back the way it came');
+    // The engine faces backwards now: on the ramp going down it still tilts the right way.
+    const p = tr.parts[engine];
+    if (!p.hidden && p.x > 29 && p.x < 30) assert.ok(Math.cos(p.heading) > 0 && p.grade > 0, 'nose still uphill');
+});
+
+test('кнопка Turn around: автобус разворачивается на следующей клетке', () => {
+    const w = flatWorld(), m = w.map;
+    must(Commands.run(w, ex => Commands.buildLongRoad(w, Commands.roadDrag(m, { fx: 10.1, fy: 20.5 }, { fx: 40.9, fy: 20.5 }, 0), ex), true));
+    must(Commands.run(w, ex => Commands.buildDepot(w, idx(w, 12, 21), 'road', Dir.NW, 0, ex), true));
+    must(Commands.run(w, ex => Commands.buildRoad(w, idx(w, 12, 20), 2, ex), true));
+    must(Commands.run(w, ex => Commands.buildRoadStop(w, idx(w, 38, 20), 0, false, ex), true));
+    const bus = Vehicles.build(w, engineByName('MPS Regal Bus').id, 0);
+    bus.orders = [{ kind: 'station', dest: 0 }];
+    bus.stopped = false;
+    for (let i = 0; i < 74 * 6; i++) w.tick();
+    assert.equal(bus.state, 'run');
+    const x0 = bus.x;
+    bus.turnAround = true;
+    for (let i = 0; i < 74 * 4; i++) w.tick();
+    assert.ok(!bus.turnAround, 'turned');
+    assert.ok(bus.x < x0 + 2, 'heading back');
+});
