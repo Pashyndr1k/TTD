@@ -1044,7 +1044,7 @@ const Commands = {
                     town.unwanted[0] = 6;
                     town.ratings[0] = -50;
                     for (const st of world.stations) if (st && st.owner === 0 && st.town === town.id) for (const g of st.goods) g.rating = 0;
-                    world.addNews('Bribery attempt uncovered! ' + town.name + ' local authority takes company to court: no more deals for 6 months.', { kind: 'company', big: true });
+                    world.addNews('Bribery attempt uncovered! ' + town.name + ' local authority takes company to court: no more deals for 6 months.', { kind: 'company', big: true, tile: town.xy });
                 } else {
                     town.changeRating(0, 200, null, 800);
                 }

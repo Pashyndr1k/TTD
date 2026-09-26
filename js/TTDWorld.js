@@ -167,13 +167,33 @@ class World {
 
     // --- News ------------------------------------------------------------------------
 
+    /**
+     * A news item. Where "Go to" takes the player: `vehicle` (followed while it exists), else `tile`
+     * and, for two-place news such as subsidies, `tile2` (a second click goes there); `engine` — a new
+     * model, shown in a depot's buy list; -1 — nowhere.
+     */
     addNews(text, opts) {
         const o = opts || {};
-        const item = { id: ++this.newsSeq, date: this.date, text, tile: o.tile != null ? o.tile : -1, kind: o.kind || 'general', big: !!o.big };
+        const item = { id: ++this.newsSeq, date: this.date, text, tile: o.tile != null ? o.tile : -1, tile2: o.tile2 != null ? o.tile2 : -1,
+            vehicle: o.vehicle != null ? o.vehicle : -1, engine: o.engine != null ? o.engine : -1, kind: o.kind || 'general', big: !!o.big };
         this.news.unshift(item);
         if (this.news.length > 60) this.news.length = 60;
         for (const fn of this.listeners) fn('news', item);
         return item;
+    }
+
+    /**
+     * Where "Go to" takes the player for a news item, in click order: its vehicle (while it
+     * exists), its tiles, a new engine's buy list; company news with no place — the finances.
+     */
+    newsPlaces(item) {
+        const out = [];
+        const v = item.vehicle >= 0 ? this.vehicles[item.vehicle] : null;
+        if (v) out.push({ vehicle: v });
+        for (const t of [item.tile, item.tile2]) if (t != null && t >= 0 && t < this.map.size) out.push({ tile: t });
+        if (item.engine >= 0) out.push({ engine: item.engine });
+        else if (!out.length && item.kind === 'company') out.push({ window: 'finances' });
+        return out;
     }
 
     emit(what, data) { for (const fn of this.listeners) fn(what, data); }
@@ -252,7 +272,8 @@ class World {
         this.companies.push(player);
         this.acceptanceDirty = true;
         this.addNews('Welcome to ' + TTDData.CLIMATE_NAMES[this.climate] + ' — ' + this.towns.length + ' towns, ' +
-            this.industries.filter(Boolean).length + ' industries. ' + s.companyName + ' is open for business.', { kind: 'company' });
+            this.industries.filter(Boolean).length + ' industries. ' + s.companyName + ' is open for business.', { kind: 'company',
+            tile: this.towns.length ? this.towns.slice().sort((a, b) => b.population - a.population)[0].xy : -1 });
     }
 
     /**
@@ -334,7 +355,7 @@ class World {
             if (!st.available && !st.retired) {
                 st.available = true;
                 if (news && !World.ENGINE[st.id].wagon) {
-                    this.addNews('New ' + World.typeName(World.ENGINE[st.id]) + ' now available! ' + World.ENGINE[st.id].name, { kind: 'vehicle', big: true });
+                    this.addNews('New ' + World.typeName(World.ENGINE[st.id]) + ' now available! ' + World.ENGINE[st.id].name, { kind: 'vehicle', big: true, engine: st.id });
                 }
             }
             let r;
@@ -663,10 +684,10 @@ const Subsidies = {
             s.months++;
             if (!s.awarded && s.months >= 12) {
                 s.dead = true;
-                world.addNews('Offer of subsidy expired: ' + Subsidies.describe(world, s) + ' will no longer attract a subsidy.', { kind: 'subsidy' });
+                world.addNews('Offer of subsidy expired: ' + Subsidies.describe(world, s) + ' will no longer attract a subsidy.', Subsidies.places(world, s, { kind: 'subsidy' }));
             } else if (s.awarded && s.months >= 12) {
                 s.dead = true;
-                world.addNews('Subsidy withdrawn: ' + Subsidies.describe(world, s) + ' is no longer subsidised.', { kind: 'subsidy' });
+                world.addNews('Subsidy withdrawn: ' + Subsidies.describe(world, s) + ' is no longer subsidised.', Subsidies.places(world, s, { kind: 'subsidy' }));
             }
         }
         world.subsidies = world.subsidies.filter(s => !s.dead);
@@ -705,7 +726,7 @@ const Subsidies = {
         if (world.subsidies.some(s => s.slot === offer.slot && s.from === offer.from && s.to === offer.to && s.fromTown === offer.fromTown)) return;
         Object.assign(offer, { months: 0, awarded: false, company: -1, srcStation: -1, dstStation: -1 });
         world.subsidies.push(offer);
-        world.addNews('Subsidy offered: first service of ' + Subsidies.describe(world, offer) + ' will attract a year\'s subsidy from the local authority!', { kind: 'subsidy', big: true });
+        world.addNews('Subsidy offered: first service of ' + Subsidies.describe(world, offer) + ' will attract a year\'s subsidy from the local authority!', Subsidies.places(world, offer, { kind: 'subsidy', big: true }));
     },
 
     placeName(world, isTown, id) {
@@ -716,6 +737,12 @@ const Subsidies = {
 
     describe(world, s) {
         return world.cargo(s.slot).name + ' from ' + Subsidies.placeName(world, s.fromTown, s.from) + ' to ' + Subsidies.placeName(world, s.toTown, s.to);
+    },
+
+    /** News options with the subsidy's source (`tile`) and destination (`tile2`) — for "Go to". */
+    places(world, s, opts) {
+        const a = Subsidies.placeXY(world, s.fromTown, s.from), b = Subsidies.placeXY(world, s.toTown, s.to);
+        return Object.assign(opts, { tile: a != null ? a : -1, tile2: b != null ? b : -1 });
     },
 
     placeXY(world, isTown, id) {
@@ -738,7 +765,7 @@ const Subsidies = {
             s.awarded = true; s.months = 0; s.company = company; s.srcStation = a.id; s.dstStation = b.id;
             const mult = ['x1.5', 'x2', 'x3', 'x4'][world.settings.subsidyMult];
             world.addNews('Service subsidy awarded to ' + world.companies[company].name + '! ' + Subsidies.describe(world, s) +
-                ' will pay ' + mult + ' rates for the next year!', { kind: 'subsidy', big: true, tile: b.xy });
+                ' will pay ' + mult + ' rates for the next year!', { kind: 'subsidy', big: true, tile: a.xy, tile2: b.xy });
             return true;
         }
         return false;

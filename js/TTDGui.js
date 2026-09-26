@@ -167,7 +167,9 @@ class Gui {
         this.on('winPrev', () => { if (this.win) { this.win.page = Math.max(0, (this.win.page || 0) - 1); this.render(); } });
         this.on('winNext', () => { if (this.win) { this.win.page = (this.win.page || 0) + 1; this.render(); } });
         this.on('newsClose', () => this.show('newsBox', false));
-        this.on('newsGo', () => { if (this.newsItem && this.newsItem.tile >= 0) g.lookAtTile(this.newsItem.tile); });
+        this.on('newsGo', () => { if (this.newsItem) this.goTo(this.newsItem); });
+        // The status bar's news line: "Go to" for the latest message, else the message history.
+        this.on('st_newsGo', () => { const n = this.world && this.world.news[0]; if (!n || !this.goTo(n)) this.open('news'); });
         this.on('ngStart', () => this.startNewGame());
         this.on('ngLoad', () => { if (g.loadGame()) this.show('ngDim', false); });
         this.on('ngResume', () => this.show('ngDim', false));
@@ -300,9 +302,14 @@ class Gui {
         this.show('winPrev', pages > 1);
         this.show('winNext', pages > 1);
         for (const r of other) r.show(false);
+        // A row's label is centred and clipped by the row: cut a long one with "…" so its start
+        // stays readable (about 0.6 font sizes per character).
+        const tpl = UI.def(lower ? 'wl' : 'wr');
+        const maxChars = tpl ? Math.max(8, Math.floor(tpl.w / (tpl.fontSize * 0.6))) : 999;
+        const cut = (s) => s.length > maxChars ? s.slice(0, maxChars - 1).trimEnd() + '…' : s;
         set.forEach((r, i) => {
             const item = rows[page * per + i];
-            if (i < per && item) { r.setText(item[0]); r.onClick(() => { this.game.sfx('click'); item[1](); }); r.show(true); }
+            if (i < per && item) { r.setText(cut(item[0])); r.onClick(() => { this.game.sfx('click'); item[1](); }); r.show(true); }
             else r.show(false);
         });
         const acts = d.acts || [];
@@ -505,6 +512,7 @@ class Gui {
         const acts = [
             ['Vehicles (' + inside.length + ')', () => { this.win.tab = 0; this.win.sel = -1; this.win.page = 0; }],
             ['New vehicles', () => { this.win.tab = 1; this.win.sel = -1; this.win.page = 0; }],
+            ['Center', () => g.lookAtTile(hangar ? hangar.xy : depot.t)],
         ];
         if (tab === 0) return this.depotVehicles(title, inside, acts);
         const railType = depot && depot.kind === 'rail' ? w.map.railType[depot.t] : null;
@@ -513,6 +521,12 @@ class Gui {
         // Trains: locomotives first, then wagons (TTD's wagon names — "Wood Truck", "Oil Tanker" —
         // are rail wagons, so each row says which it is).
         if (type === 'rail') list = list.filter(e => !e.wagon).concat(list.filter(e => e.wagon));
+        // Opened from a "new vehicle" news item: select that engine.
+        if (this.win.pickEngine != null) {
+            const i = list.findIndex(e => e.id === this.win.pickEngine);
+            if (i >= 0) this.win.sel = i;
+            this.win.pickEngine = null;
+        }
         // New wagons join the train (or wagon row) selected on the Vehicles tab, else the last train.
         const rowsIn = /** @type {Train[]} */ (inside.filter(v => v instanceof Train));
         const target = rowsIn.find(v => v.id === this.win.train) || rowsIn.filter(v => v.hasEngine()).pop() || rowsIn[rowsIn.length - 1];
@@ -697,16 +711,24 @@ class Gui {
         return { title: c.name, text: lines.join('\n'), acts: [] };
     }
 
+    /** TTD's subsidies window: click a subsidy to go to its source, again for its destination. */
     vSubsidies() {
         const w = this.world;
         const offers = w.subsidies.filter(s => !s.awarded), awarded = w.subsidies.filter(s => s.awarded);
-        const lines = ['Subsidies on offer for services taking:'];
-        if (!offers.length) lines.push('  None');
-        for (const s of offers) lines.push('  ' + Subsidies.describe(w, s) + ' (by ' + Calendar.format(w.date + (12 - s.months) * 30) + ')');
-        lines.push('', 'Services already subsidised:');
-        if (!awarded.length) lines.push('  None');
-        for (const s of awarded) lines.push('  ' + Subsidies.describe(w, s) + ' (' + w.companies[s.company].name + ', until ' + Calendar.format(w.date + (12 - s.months) * 30) + ')');
-        return { title: 'Subsidies', text: lines.join('\n') };
+        const none = () => {}, rows = [];
+        // Two rows a subsidy (cargo and date, then the route), both "Go to".
+        const add = (s, when) => {
+            const go = () => this.goTo(Subsidies.places(w, s, {}), 'sub:' + s.slot + ':' + s.fromTown + s.from + ':' + s.toTown + s.to);
+            rows.push(['» ' + w.cargo(s.slot).name + ' (' + when + ')', go]);
+            rows.push([Subsidies.placeName(w, s.fromTown, s.from) + ' → ' + Subsidies.placeName(w, s.toTown, s.to), go]);
+        };
+        rows.push(['Subsidies on offer for services taking:', none]);
+        if (!offers.length) rows.push(['  None', none]);
+        for (const s of offers) add(s, 'by ' + Calendar.format(w.date + (12 - s.months) * 30));
+        rows.push(['Services already subsidised:', none]);
+        if (!awarded.length) rows.push(['  None', none]);
+        for (const s of awarded) add(s, w.companies[s.company].name + ', until ' + Calendar.format(w.date + (12 - s.months) * 30));
+        return { title: 'Subsidies', text: '', rows, info: 'Click: go to its source; again: destination.' };
     }
 
     vStations() {
@@ -767,7 +789,8 @@ class Gui {
 
     vNews() {
         const w = this.world;
-        return { title: 'Message history', rows: w.news.map(n => [Calendar.format(n.date) + ': ' + n.text, () => { if (n.tile >= 0) this.game.lookAtTile(n.tile); }]) };
+        // "»" marks a message with a place: click it to go there (again — its next place).
+        return { title: 'Message history', rows: w.news.map(n => [(this.hasPlace(n) ? '» ' : '  ') + Calendar.format(n.date) + ': ' + n.text, () => { this.goTo(n); }]) };
     }
 
     vMenu() {
@@ -915,10 +938,55 @@ class Gui {
         if (!item.big) return;
         this.newsItem = item;
         this.text('newsHead', Calendar.format(item.date, true).toUpperCase() + '  —  ' + (item.kind === 'accident' ? 'ACCIDENT' : item.kind === 'subsidy' ? 'SUBSIDY' : item.kind === 'vehicle' ? 'NEW VEHICLE' : 'NEWS'));
-        this.text('newsText', Gui.wrap(item.text, 70));
-        this.show('newsGo', item.tile >= 0);
+        this.text('newsText', Gui.wrap(item.text, 62));
+        this.show('newsGo', this.hasPlace(item));
         this.show('newsBox', true);
         this._newsT = 8;
+    }
+
+    hasPlace(item) { return !!this.world && this.world.newsPlaces(item).length > 0; }
+
+    /**
+     * "Go to" for a news item, a subsidy or any message with a place: follow its vehicle, look at
+     * its tile, show a new engine in a depot's buy list. Clicked again (same `key`), it moves on to
+     * the next place — a subsidy's destination after its source. Returns false when there is none.
+     */
+    goTo(item, key) {
+        const g = this.game, places = this.world ? this.world.newsPlaces(item) : [];
+        if (!places.length) return false;
+        const k = key != null ? key : 'news:' + item.id;
+        this._goStep = this._goKey === k ? (this._goStep + 1) % places.length : 0;
+        this._goKey = k;
+        const p = places[this._goStep];
+        if (p.vehicle) { g.follow(p.vehicle); this.openWin('vehicle', p.vehicle.id); }
+        else if (p.tile != null) g.lookAtTile(p.tile);
+        else if (p.engine != null) this.showEngine(p.engine);
+        else if (p.window) this.openWin(p.window, undefined);
+        return true;
+    }
+
+    /** Open a window without `open`'s toggle (a second "Go to" must not close it). */
+    openWin(kind, ref, extra) {
+        this.win = Object.assign({ kind, ref, page: 0, sel: -1, tab: 0 }, extra);
+        this.show('win', true);
+        this.render();
+    }
+
+    /** A new engine: the buy list of one of the player's depots (a hangar for aircraft) that can build it. */
+    showEngine(id) {
+        const w = this.world, g = this.game, e = World.ENGINE[id];
+        if (!e) return;
+        if (e.type === 'air') {
+            const st = w.stations.find(s => s && s.owner === 0 && s.airport && (e.heli || s.airport.type !== 2));
+            if (!st) { g.error('Build an airport to buy the ' + e.name); return; }
+            g.lookAtTile(st.xy);
+            this.openWin('depot', -1, { hangar: st.id, tab: 1, pickEngine: id });
+            return;
+        }
+        const d = w.depots.find(d => d && d.owner === 0 && d.kind === e.type && (e.type !== 'rail' || Vehicles.railCompatible(e.rail, w.map.railType[d.t])));
+        if (!d) { g.error('Build a ' + { rail: 'train', road: 'road vehicle', ship: 'ship' }[e.type] + ' depot to buy the ' + e.name); return; }
+        g.lookAtTile(d.t);
+        this.openWin('depot', d.id, { tab: 1, pickEngine: id });
     }
 
     static wrap(s, n) {

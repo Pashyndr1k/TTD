@@ -357,6 +357,14 @@ prices, running costs, speeds, power, weight, capacity and lifespans.
   Music: the player's own tracks in `assets/sounds/music` (`Game.MUSIC`), played in turn
   like TTD's jukebox. The music player widget (`jukebox` in `UILayout.js`) has the track,
   previous / play-stop / next and a ten-step volume selector.
+- **Go to (TTD's news "centre view"):** each news item keeps where it happened
+  (`World.addNews`, see below); `World.newsPlaces` lists the places in click order and
+  `Gui.goTo` goes there. The popup, the status-bar line (`st_newsGo`), the message history and
+  the subsidies window all use it. Repeated clicks cycle the places.
+  - `vehicle`: followed, and its window opened, while the vehicle exists;
+  - `tile`, `tile2`: two places, such as a subsidy's source and destination;
+  - `engine`: a new model, shown in the buy list of a depot (or hangar) that can build it;
+  - company news with no place opens the finances.
 - **Ships** sail on water tiles to the water in front of a dock.
 - **Aircraft** taxi, take off, cruise, approach and land. They need a free terminal and hold
   above the airport otherwise. Fast jets can crash on a small airport.

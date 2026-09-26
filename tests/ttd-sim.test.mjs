@@ -598,3 +598,36 @@ test('депо: продажа локомотива и вагонов по от�
     }
 });
 function TTDData_find(what) { return page.get('TTDData').ENGINES.find(e => e.type === 'rail' && e.multihead && e.climates & 1); }
+
+test('"Go to" в новостях: транспорт, место, оба конца субсидии, новая модель', () => {
+    const w = flatWorld();
+    const Subsidies = page.get('Subsidies');
+    const a = Towns.found(w, idx(w, 12, 19), 6), b = Towns.found(w, idx(w, 44, 19), 6);
+    must(Commands.run(w, ex => Commands.buildDepot(w, idx(w, 28, 21), 'road', 3, 0, ex), true));
+    const v = Vehicles.build(w, engineByName('MPS Regal Bus').id, 0);
+    assert.equal(typeof v, 'object', String(v));
+    // A vehicle growing old: the news follows that vehicle.
+    v.age = v.maxAge - 366;
+    run(w, 2);
+    const old = w.news.find(n => n.text.includes('getting old'));
+    assert.ok(old, 'old-vehicle news');
+    assert.equal(old.vehicle, v.id);
+    assert.equal(w.newsPlaces(old)[0].vehicle, v);
+    // A subsidy offer running out: its source, then its destination.
+    w.subsidies.push({ slot: w.cargoSlot('passengers'), fromTown: true, from: a.id, toTown: true, to: b.id, months: 11, awarded: false, company: -1, srcStation: -1, dstStation: -1 });
+    Subsidies.monthly(w);
+    const exp = w.news.find(n => n.kind === 'subsidy');
+    assert.ok(exp, 'subsidy news');
+    assert.deepEqual(plain(w.newsPlaces(exp)), [{ tile: a.xy }, { tile: b.xy }]);
+    // News with no place has none; company trouble opens the finances; a new model its buy list.
+    assert.equal(w.newsPlaces(w.addNews('World Recession!', { kind: 'economy' })).length, 0);
+    assert.deepEqual(plain(w.newsPlaces(w.addNews('In trouble', { kind: 'company' }))), [{ window: 'finances' }]);
+    assert.deepEqual(plain(w.newsPlaces(w.addNews('New bus', { kind: 'vehicle', engine: 7 }))), [{ engine: 7 }]);
+    // A sold vehicle's news falls back to its tile, and targets survive save/load.
+    const n = w.addNews('Waiting', { kind: 'vehicle', vehicle: v.id, tile: idx(w, 28, 21) });
+    must(Commands.run(w, ex => Commands.buildRoad(w, idx(w, 28, 20), 2, ex), true));
+    assert.equal(Vehicles.sell(w, v), null);
+    assert.deepEqual(plain(w.newsPlaces(n)), [{ tile: idx(w, 28, 21) }]);
+    const w2 = World.load(w.save());
+    assert.deepEqual(plain(w2.newsPlaces(w2.news.find(x => x.kind === 'subsidy'))), [{ tile: a.xy }, { tile: b.xy }]);
+});

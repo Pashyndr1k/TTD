@@ -49,6 +49,11 @@ build.bat          # or: node tools/build.mjs          -> dist/*.zip
   - Game: new, save, load, currency, help.
   - Info: towns, subsidies, stations, finances, company, industries (and funding new ones).
   - Vehicle lists and news.
+  - **Go to:** every message with a place takes you there — the newspaper's Go to button, the
+    news line in the status bar, the "»" rows of the message history and the subsidies window.
+    Vehicle news follows the vehicle and opens its window. Subsidies go to the source, and a
+    second click to the destination. A new model opens a depot's buy list, and company trouble
+    opens the finances.
   - Construction: railway, roads, docks, airports, demolish, landscaping and the "?" land info tool.
 - **A first route:**
   1. Railway → Station near a town or industry. The blue area is the catchment.

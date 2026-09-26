@@ -110,6 +110,11 @@ class Vehicle {
     onNewDay(world) {
         if (this.state === 'crashed') return;
         this.age++;
+        // News: vehicle getting old (a year before the end of its life), and old — in a depot too (TTD's AgeVehicle).
+        if (this.owner === 0) {
+            if (this.age === this.maxAge - 365) world.addNews(this.displayName() + ' is getting old.', { kind: 'vehicle', vehicle: this.id });
+            else if (this.age === this.maxAge) world.addNews(this.displayName() + ' is getting very old and urgently needs replacing.', { kind: 'vehicle', vehicle: this.id });
+        }
         const company = world.companies[this.owner];
         // Running costs: yearly cost / 364 per day (TTD).
         const run = Vehicles.runningCost(world, this) / 364;
@@ -143,11 +148,6 @@ class Vehicle {
         if (settings.breakdowns > 0 && interval > 0 && world.date - this.lastService > interval && this.serviceDepot < 0 && this.load == null) {
             this.requestService(world);
         }
-        // News: vehicle getting old (a year before the end of its life), and old.
-        if (this.owner === 0) {
-            if (this.age === this.maxAge - 365) world.addNews(this.displayName() + ' is getting old.', { kind: 'vehicle' });
-            else if (this.age === this.maxAge) world.addNews(this.displayName() + ' is getting very old and urgently needs replacing.', { kind: 'vehicle' });
-        }
     }
 
     onBreakdown(world) { if (this.owner === 0) world.emit('breakdown', this); }
@@ -167,7 +167,7 @@ class Vehicle {
         this.profitLast = this.profitThis;
         this.profitThis = 0;
         if (this.owner === 0 && this.profitLast < 0 && this.age > 730 && this.state !== 'depot') {
-            world.addNews(this.displayName() + ' made a loss last year: ' + Money.format(this.profitLast) + '.', { kind: 'vehicle' });
+            world.addNews(this.displayName() + ' made a loss last year: ' + Money.format(this.profitLast) + '.', { kind: 'vehicle', vehicle: this.id });
         }
     }
 
@@ -181,7 +181,7 @@ class Vehicle {
             this.depotTrip = -1;
             this.stopped = true;
             this.onOrderChanged();
-            if (this.owner === 0) world.addNews(this.displayName() + ' is waiting in depot.', { kind: 'vehicle', tile: tile == null ? -1 : tile });
+            if (this.owner === 0) world.addNews(this.displayName() + ' is waiting in depot.', { kind: 'vehicle', vehicle: this.id, tile: tile == null ? -1 : tile });
             return;
         }
         const o = this.order();
@@ -206,7 +206,7 @@ class Vehicle {
                 this.age = 0;
                 this.value = Vehicles.purchasePrice(world, this);
                 this.reliability = st.reliability;
-                if (this.owner === 0) world.addNews('Autorenew: ' + this.displayName() + ' replaced with a new ' + this.spec.name + ' (' + Money.format(cost) + ').', { kind: 'vehicle' });
+                if (this.owner === 0) world.addNews('Autorenew: ' + this.displayName() + ' replaced with a new ' + this.spec.name + ' (' + Money.format(cost) + ').', { kind: 'vehicle', vehicle: this.id });
             }
         }
     }
@@ -226,7 +226,7 @@ class Vehicle {
             station.firstArrival = true;
             if (this.owner === 0) {
                 const kind = { train: 'train', road: this.cars[0] && this.cars[0].slot === world.cargoSlot('passengers') ? 'bus' : 'truck', ship: 'ship', air: 'aircraft' }[this.type];
-                world.addNews('Citizens celebrate . . . First ' + kind + ' arrives at ' + station.name + '!', { tile: station.xy, kind: 'arrival', big: true });
+                world.addNews('Citizens celebrate . . . First ' + kind + ' arrives at ' + station.name + '!', { tile: station.xy, vehicle: this.id, kind: 'arrival', big: true });
             }
         }
     }

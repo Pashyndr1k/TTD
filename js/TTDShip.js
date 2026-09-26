@@ -133,7 +133,7 @@ const Ships = {
         };
         const path = PathFinder.search({ tile: start, td: 0 }, n => gs.has(n.tile), next, h, 30000);
         if (!path) {
-            if (v.owner === 0 && !v.lost) world.addNews(v.displayName() + ' is lost.', { kind: 'vehicle' });
+            if (v.owner === 0 && !v.lost) world.addNews(v.displayName() + ' is lost.', { kind: 'vehicle', vehicle: v.id });
             v.lost = true;
             return null;
         }

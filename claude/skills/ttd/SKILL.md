@@ -62,6 +62,8 @@ formula and says what is implemented or left out.
    (`Models.vehicleKind`, industry id, house name).
 6. **HUD by id.** New windows are `Gui.v…()` views returning `{ title, text, info, rows, acts }`;
    the rows and buttons are copies of the `wr`/`wl`/`wb` templates in `UILayout.js` (skill `ui`).
+   News gets a place for "Go to": `world.addNews(text, { tile, tile2, vehicle, engine })`. A new
+   message about something on the map passes it; `World.newsPlaces` and `Gui.goTo` do the rest.
 7. **Roads follow TTD's road_cmd.c.** Every road piece, the player's or a town's, goes through
    `Commands.buildRoad` (town roads pass the town). Slopes, foundations and a road's end
    heights come only from `GameMap.roadSlopeCheck` / `roadFoundation` / `roadEdgeZ`; the

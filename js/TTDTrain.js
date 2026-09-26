@@ -593,7 +593,7 @@ const Trains = {
             if (!best || cost < best.cost) best = { c, cost, path };
         }
         if (!best) {
-            if (!train.lost && train.owner === 0) world.addNews(train.displayName() + ' is lost.', { kind: 'vehicle', tile: s0.t });
+            if (!train.lost && train.owner === 0) world.addNews(train.displayName() + ' is lost.', { kind: 'vehicle', vehicle: train.id, tile: s0.t });
             train.lost = true;
             return null;
         }
@@ -677,7 +677,7 @@ const Trains = {
         v.load = null;
         for (const car of v.cars) car.cargo = [];
         const what = v.type === 'train' ? 'Train Crash!' : 'Road Vehicle Crash!';
-        world.addNews(what + ' ' + victims + ' die in fireball after collision (' + v.displayName() + ')', { kind: 'accident', tile: world.map.idx(Math.floor(v.x), Math.floor(v.y)), big: true });
+        world.addNews(what + ' ' + victims + ' die in fireball after collision (' + v.displayName() + ')', { kind: 'accident', vehicle: v.id, tile: world.map.idx(Math.floor(v.x), Math.floor(v.y)), big: true });
         world.emit('crash', v);
     },
 };
