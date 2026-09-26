@@ -43,6 +43,9 @@ class TTDRender3D {
         /** Called when a steam engine puffs: (vehicle, kind, x, y) in world px — the game chuffs. */
         /** @type {((v: any, kind: string, x: number, y: number) => void) | null} */
         this.onPuff = null;
+        /** Wagon load bars (loadBars()): two instance groups and this frame's copies. */
+        /** @type {{ bg: any, fill: any, bgItems: any[], fillItems: any[] } | null} */
+        this.bars = null;
         this.overlays = [];
         this._buildOverlayMaterials();
         this.cursor = this._makeCursor();
@@ -418,6 +421,8 @@ class TTDRender3D {
     updateVehicles(alpha) {
         const w = this.world, T = this.T, L = this.L;
         for (const g of this.vehicleGroups.values()) g.items.length = 0;
+        const bars = (typeof TTD_LOAD_BARS !== 'undefined' ? TTD_LOAD_BARS : 1) ? this.loadBars() : null;
+        if (bars) { bars.bgItems.length = 0; bars.fillItems.length = 0; }
         const tmp = { x: 0, y: 0, z: 0, heading: 0, grade: 0 };
         for (const v of w.vehicles) {
             if (!v || v.state === 'depot' || !v.parts) continue;
@@ -441,9 +446,50 @@ class TTDRender3D {
                     pitch: Math.atan2((p.grade || 0) * L, T) * (v.type === 'air' ? 1 : 1),
                     scale: v.state === 'crashed' ? [1, 0.6, 1] : 1,
                 });
+                if (bars && v.type === 'train' && car.cap > 0 && v.state !== 'crashed') {
+                    // Load bar over the wagon: a dark track, filled from the back as it loads.
+                    const f = Math.max(0, Math.min(1, v.cargoCount(car) / car.cap));
+                    const len = T * 0.38, top = p.z * L + lift + T * 0.36, cx = Math.cos(p.heading), cy = Math.sin(p.heading);
+                    bars.bgItems.push({ x: p.x * T, y: p.y * T, h: top, heading: p.heading, scale: [len + 1.5, 3.5, 7] });
+                    if (f > 0) {
+                        const off = -(1 - f) * len / 2;
+                        bars.fillItems.push({ x: p.x * T + cx * off, y: p.y * T + cy * off, h: top + 0.4, heading: p.heading, scale: [len * f, 3.5, 7.6] });
+                    }
+                }
             }
         }
         for (const g of this.vehicleGroups.values()) g.inst.setAll(g.items);
+        if (this.bars) {
+            this.bars.bg.setAll(bars ? this.bars.bgItems : []);
+            this.bars.fill.setAll(bars ? this.bars.fillItems : []);
+        }
+    }
+
+    /**
+     * The two instance groups of the wagon load bars (a unit box scaled per copy), made once.
+     * They draw over everything (no depth test) so platform roofs never hide them; the fill is in
+     * a later layer than its track so it always lands on top.
+     */
+    loadBars() {
+        if (!this.bars) {
+            const make = (name, col, layer) => {
+                const b = new MeshData();
+                b.box(-0.5, 0, -0.5, 0.5, 1, 0.5, Models.C(col));
+                const mesh = b.toMesh(name, this.scene);
+                const mat = new BABYLON.StandardMaterial(name + 'Mat', this.scene);
+                mat.disableLighting = true;
+                mat.emissiveColor = BABYLON.Color3.FromHexString(col);
+                mesh.material = mat;
+                mesh.isPickable = false;
+                const inst = World3D.addInstances(this.view, mesh, 'prop', [], { ink: false, outline: false, castShadow: false, dynamic: true });
+                mat.depthFunction = BABYLON.Constants.ALWAYS;
+                mat.disableDepthWrite = true;
+                for (const part of inst.parts) { part.renderingGroupId = layer; part.receiveShadows = false; }
+                return inst;
+            };
+            this.bars = { bg: make('ttdLoadBg', '#3a3e46', World3D.LAYER.OVERLAY), fill: make('ttdLoadFill', '#58e060', World3D.LAYER.ACTOR), bgItems: [], fillItems: [] };
+        }
+        return this.bars;
     }
 
     // --- Steam, smoke and sparks (TTD's effect vehicles) --------------------------------------------------

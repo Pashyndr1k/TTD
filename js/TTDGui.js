@@ -48,6 +48,39 @@ class Gui {
         this.bbs = copy('bb', 12, (t, i) => ({ x: t.x + i * (t.w + 3) }));
         this.opts = copy('ob', 8, (t, i) => ({ x: t.x + i * (t.w + 3) }));
         this.ngs = copy('ng', 14, (t, i) => ({ y: t.y + i * (t.h + 3) }));
+        /** Floating income texts (TTD's "+£123" over a vehicle): copies of 'moneyFloat'. */
+        this.floats = copy('moneyFloat', 16, () => ({})).map(e => ({ e, age: -1, x: 0, y: 0, h: 0 }));
+    }
+
+    /** Float `text` up from world px (x, y, h) — the income a vehicle has just earned. */
+    spawnFloat(x, y, h, text) {
+        if (!this.floats.length) return;
+        let f = this.floats.find(q => q.age < 0);
+        if (!f) f = this.floats.reduce((a, b) => (a.age > b.age ? a : b));
+        f.age = 0; f.x = x; f.y = y; f.h = h;
+        f.e.setText(text);
+    }
+
+    /** Move the floating texts: they rise over their point and fade out. */
+    updateFloats(dt) {
+        const life = typeof TTD_INCOME_TEXT_SEC !== 'undefined' ? TTD_INCOME_TEXT_SEC : 2.5;
+        const view = this.game.view;
+        const s = UI.scale(), W = UI.size().w;
+        for (const f of this.floats) {
+            if (f.age < 0) continue;
+            f.age += dt;
+            const p = view ? view.projectToScreen(f.x, f.y, f.h + f.age * 40) : null;
+            if (f.age >= life || !p || p.behind || !p.visible) {
+                if (f.age >= life) f.age = -1;
+                f.e.show(false);
+                continue;
+            }
+            const d = f.e.def;
+            d.x = p.x / s - W / 2;
+            d.y = p.y / s - 10;
+            d.alpha = f.age < life * 0.6 ? 1 : Math.max(0, 1 - (f.age - life * 0.6) / (life * 0.4));
+            f.e.show(true);
+        }
     }
 
     on(id, fn) { const e = UI.get(id); if (e) e.onClick(() => { this.game.sfx('click'); fn(); }); }
@@ -846,6 +879,7 @@ class Gui {
 
     update(dt) {
         const w = this.world, g = this.game;
+        this.updateFloats(dt);
         const mm = UI.get('minimap');
         if (mm && mm.visible && w) {
             this._mapT = (this._mapT || 0) - dt;

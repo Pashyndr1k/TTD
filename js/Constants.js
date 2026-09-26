@@ -79,6 +79,8 @@ const TTD_EFFECTS = 1;                  // 1 — steam, smoke and sparks from ve
 const TTD_STEAM_PUFF_TILES = 0.35;      // a steam engine puffs once per this many tiles travelled
 const TTD_PUFF_LIFE = 1.8;              // s: how long a puff of steam or smoke rises before it is gone
 const TTD_MUSIC = 1;                    // 1 — the jukebox plays assets/sounds/music (Game menu: Music on/off, Next track); 0 — silent
+const TTD_INCOME_TEXT_SEC = 2.5;        // s: the income a vehicle earns floats up above it this long (0 — off)
+const TTD_LOAD_BARS = 1;                // 1 — a load bar over every train wagon (how full it is); 0 — none
 const TTD_VEHICLE_SOUNDS = 1;           // 1 — vehicles whistle, chuff and hoot (the building and money sounds always play)
 
 // --- TTD REMAKE: new game defaults — taken from the player's openttd.cfg (TTD.zip) ---

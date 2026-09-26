@@ -55,6 +55,7 @@ const UI_LAYOUT = [
     { id: 'st_speed', kind: 'text', anchor: 'middle-left', parent: 'status', x: 150, y: 0, text: "", fontSize: 12, color: '#ffd060', shadow: '', alpha: 1, visible: 1 },
     { id: 'hover', kind: 'text', anchor: 'bottom-left', x: 10, y: 32, text: "", fontSize: 12, color: '#ffffff', shadow: '#000000', alpha: 0.95, visible: 1 },
     { id: 'costTip', kind: 'text', anchor: 'bottom-right', x: 10, y: 32, text: "", fontSize: 13, color: '#ffe080', shadow: '#000000', alpha: 1, visible: 1 },
+    { id: 'moneyFloat', kind: 'text', anchor: 'top-center', x: 0, y: 0, text: "+$0", fontSize: 14, color: '#ffe040', shadow: '#000000', alpha: 1, visible: 0 },
     { id: 'fps', kind: 'text', anchor: 'bottom-right', x: 10, y: 52, text: "", fontSize: 10, color: '#ffffff', shadow: '#000000', alpha: 0.5, visible: 1 },
     { id: 'minimap', kind: 'canvas', anchor: 'bottom-right', x: 8, y: 34, w: 220, h: 220, fill: '#0c1a26', border: '#4a5566', radius: 4, alpha: 0.95, visible: 0 },
     { id: 'msg', kind: 'panel', anchor: 'top-center', x: 0, y: 96, w: 520, h: 40, fill: '#6a2020', border: '#e08060', radius: 6, alpha: 0.95, visible: 0 },

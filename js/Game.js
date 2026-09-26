@@ -116,6 +116,9 @@ class Game {
         else if (what === 'year') this.saveGame(Game.AUTOSAVE_KEY);
         else if (what === 'income') {
             this.money('+' + Money.format(data.amount));
+            // TTD shows the income over the vehicle as it is paid.
+            const life = typeof TTD_INCOME_TEXT_SEC !== 'undefined' ? TTD_INCOME_TEXT_SEC : 2.5;
+            if (life > 0 && data.v && this.render) this.gui.spawnFloat(data.v.x * T, data.v.y * T, data.v.z * this.render.L + T * 0.45, '+' + Money.format(data.amount));
             if (data.tile >= 0) this.sfx('cash', (m.tx(data.tile) + 0.5) * T, (m.ty(data.tile) + 0.5) * T);
         }
         else if (what === 'crash') this.sfx('crash', data.x * T, data.y * T);

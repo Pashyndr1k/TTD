@@ -91,6 +91,9 @@ build.bat          # or: node tools/build.mjs          -> dist/*.zip
   Game → Next track. The playlist is `Game.MUSIC` in `js/Game.js`: add, remove or reorder
   tracks there.
   Set `TTD_MUSIC = 0` to start without it.
+- **Income and loads:** when a vehicle is paid for its cargo, the sum floats up over it, as in
+  TTD (`TTD_INCOME_TEXT_SEC`). Every train wagon carries a load bar: a dark track that fills
+  green as the wagon loads (`TTD_LOAD_BARS`).
 - **Steam and smoke:** steam engines puff as they run, diesels smoke as they pull away, and
   electric engines spark. Broken-down and crashed vehicles smoke. Every car tilts on a slope.
 - **Saves** go to the browser's local storage. The game also autosaves yearly, as in your config.

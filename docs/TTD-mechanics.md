@@ -336,6 +336,8 @@ prices, running costs, speeds, power, weight, capacity and lifespans.
   vehicles **turn around** (TTD's `CmdTurnRoadVeh`) with a U-turn on the next tile.
 - **Tilt:** every car and road vehicle pitches by the height of the track or road under its front
   and rear axles. It eases onto and off a slope, and a car facing backwards tilts the right way.
+- **Income text:** the payment floats up over the vehicle (TTD's income sign), from the
+  `moneyFloat` template in `UILayout.js`. **Load bars** over train wagons show how full each one is.
 - **Effects** (TTD's effect vehicles): steam puffs from steam engines, one every
   `TTD_STEAM_PUFF_TILES` travelled. Diesels smoke as they pull away and electrics spark.
   Broken-down and crashed vehicles smoke.
