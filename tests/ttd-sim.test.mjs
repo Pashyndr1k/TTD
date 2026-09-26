@@ -480,3 +480,35 @@ test('протяжка дороги: любые две точки курсора
     // Inside one tile, a drag across it builds both halves along the way it went.
     assert.equal(Commands.roadPath(m, { fx: 10.1, fy: 10.4 }, { fx: 10.9, fy: 10.6 })[0].bits, 5);
 });
+
+test('приказ "Full load": поезд ждёт, пока не заполнится КАЖДЫЙ вагон, а не один', () => {
+    const w = flatWorld(), m = w.map;
+    must(Commands.run(w, ex => Commands.buildRailStation(w, idx(w, 8, 30), 0, 1, 3, 0, ex), true));
+    for (let x = 11; x <= 30; x++) must(Commands.run(w, ex => Commands.buildRail(w, idx(w, x, 30), Track.X, 0, ex), true));
+    must(Commands.run(w, ex => Commands.buildRailStation(w, idx(w, 31, 30), 0, 1, 3, 0, ex), true));
+    must(Commands.run(w, ex => Commands.buildRail(w, idx(w, 20, 30), Track.LEFT, 0, ex), true));
+    must(Commands.run(w, ex => Commands.buildDepot(w, idx(w, 20, 29), 'rail', 1, 0, ex), true));
+    const tr = Vehicles.build(w, engineByName('Kirby Paul Tank (Steam)').id, 0);
+    const coach = w.buyable('rail', 0).find(e => e.wagon && w.cargo(e.cargo).key === 'passengers');
+    const mail = w.buyable('rail', 0).find(e => e.wagon && w.cargo(e.cargo).key === 'mail');
+    Vehicles.addWagon(w, tr, coach.id);
+    Vehicles.addWagon(w, tr, mail.id);
+    tr.orders = [{ kind: 'station', dest: 0, full: true }, { kind: 'station', dest: 1 }];
+    tr.stopped = false;
+    const A = w.stations[0], pax = w.cargoSlot('passengers'), ml = w.cargoSlot('mail');
+    // Enough passengers to fill the coach, no mail: the coach is full, the mail van empty.
+    for (let i = 0; i < 74 * 30 && !(tr.state === 'load' && tr.load && tr.load.station === 0); i++) w.tick();
+    assert.equal(tr.state, 'load', 'arrived at A');
+    A.addWaiting(pax, coach.capacity, A.id, A.xy, null);
+    for (let i = 0; i < 74 * 20; i++) w.tick();
+    const coachCar = tr.cars.find(c => c.cap && c.slot === pax);
+    assert.equal(tr.cargoCount(coachCar), coachCar.cap, 'the coach is full');
+    assert.equal(tr.state, 'load', 'one full wagon is not a full train: still waiting');
+    assert.equal(tr.cur, 0);
+    // The rest arrives: now it goes.
+    A.addWaiting(pax, 200, A.id, A.xy, null);
+    A.addWaiting(ml, 200, A.id, A.xy, null);
+    for (let i = 0; i < 74 * 20 && tr.cur === 0; i++) w.tick();
+    assert.equal(tr.cur, 1, 'full: off to B');
+    assert.ok(tr.cars.every(c => !c.cap || tr.cargoCount(c) === c.cap), 'every wagon full');
+});

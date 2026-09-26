@@ -383,15 +383,21 @@ class Gui {
         const rows = v.orders.map((o, i) => [this.orderText(o, i, v.cur) + (i === sel ? '   <' : ''), () => { this.win.sel = i; this.render(); }]);
         rows.push(['  (end of orders)', () => { this.win.sel = -1; this.render(); }]);
         const o = v.orders[sel];
+        const pick = () => {
+            if (o && o.kind === 'station') return true;
+            g.error(o ? 'Only a station order can have this' : 'Click an order in the list first, then set it');
+            return false;
+        };
         const acts = [
             [v.stopped ? 'Start' : 'Stop', () => { v.stopped = !v.stopped; if (!v.stopped && !v.orders.length) g.error('This vehicle has no orders'); }],
             ['Go To…', () => { g.orderVehicle = v; g.setTool('order', {}); }],
             ['Delete', () => { if (o) { v.orders.splice(sel, 1); if (v.cur >= v.orders.length) v.cur = 0; v.onOrderChanged(); this.win.sel = -1; } }],
             ['Skip', () => { v.nextOrder(); }],
-            ['Full load', () => { if (o && o.kind === 'station') { o.full = !o.full; if (o.full) o.unload = o.transfer = false; } }],
-            ['Unload', () => { if (o && o.kind === 'station') { o.unload = !o.unload; if (o.unload) o.full = false; } }],
-            ['Transfer', () => { if (o && o.kind === 'station') { o.transfer = !o.transfer; if (o.transfer) o.full = false; } }],
-            ['Non-stop', () => { if (o && o.kind === 'station') o.nonstop = !o.nonstop; }],
+            // Order flags apply to the order selected in the list (TTD greys them out otherwise).
+            [(o && o.full ? '• ' : '') + 'Full load', () => { if (pick()) { o.full = !o.full; if (o.full) o.unload = o.transfer = false; } }],
+            [(o && o.unload ? '• ' : '') + 'Unload', () => { if (pick()) { o.unload = !o.unload; if (o.unload) o.full = false; } }],
+            [(o && o.transfer ? '• ' : '') + 'Transfer', () => { if (pick()) { o.transfer = !o.transfer; if (o.transfer) o.full = false; } }],
+            [(o && o.nonstop ? '• ' : '') + 'Non-stop', () => { if (pick()) o.nonstop = !o.nonstop; }],
             ['To depot', () => { g.sendToDepot(v); }],
             ['Center', () => { g.follow(v); }],
         ];

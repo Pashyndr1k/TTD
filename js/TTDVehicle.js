@@ -249,7 +249,7 @@ class Vehicle {
             }
         } else {
             const unloadOnly = o && (o.unload || o.transfer);
-            let full = true, anyFull = false, anyCap = false;
+            let full = true, anyCap = false;
             for (const car of this.cars) {
                 if (!car.cap) continue;
                 anyCap = true;
@@ -266,12 +266,12 @@ class Vehicle {
                     const got = st.take(car.slot, Math.min(step, free));
                     for (const p of got) { car.cargo.push(p); moved += p.n; }
                 }
-                const now = this.cargoCount(car);
-                if (now < car.cap) full = false; else anyFull = true;
+                if (this.cargoCount(car) < car.cap) full = false;
             }
             if (moved > 0) L.gotAny = true;
+            // TTD's full load: wait until EVERY car is full (not just one of them).
             const wantFull = o && o.full && !unloadOnly && anyCap;
-            const satisfied = !wantFull || full || anyFull;
+            const satisfied = !wantFull || full;
             if (moved === 0 && satisfied) {
                 this.load = null;
                 return true;
