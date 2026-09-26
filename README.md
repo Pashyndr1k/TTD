@@ -87,8 +87,11 @@ build.bat          # or: node tools/build.mjs          -> dist/*.zip
 
   Vehicle sounds come from where they are and fade with distance from the camera.
 - **Music:** a jukebox plays the ten tracks in `assets/sounds/music` in turn: Slay The Evil,
-  Perilous Dungeon, Boss Battle and the rest. Switch it with Game → Music, skip with
-  Game → Next track. The playlist is `Game.MUSIC` in `js/Game.js`: add, remove or reorder
+  Perilous Dungeon, Boss Battle and the rest.
+  - The music player sits in the bottom-left corner: the track, previous / play-stop / next,
+    and a volume selector of ten bars (click a bar to set the level; the far left mutes).
+  - Its **x** hides it; Game → Music player shows it again.
+  - The volume, on/off and the widget are remembered in this browser. The playlist is `Game.MUSIC` in `js/Game.js`: add, remove or reorder
   tracks there.
   Set `TTD_MUSIC = 0` to start without it.
 - **Income and loads:** when a vehicle is paid for its cargo, the sum floats up over it, as in

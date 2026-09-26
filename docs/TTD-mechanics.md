@@ -345,7 +345,8 @@ prices, running costs, speeds, power, weight, capacity and lifespans.
   income (cash register), a whistle or horn as a train starts off, chuffing, bus honks,
   foghorns, aircraft take-offs, breakdowns, crashes, the news chime, clicks and errors.
   Music: the player's own tracks in `assets/sounds/music` (`Game.MUSIC`), played in turn
-  like TTD's jukebox.
+  like TTD's jukebox. The music player widget (`jukebox` in `UILayout.js`) has the track,
+  previous / play-stop / next and a ten-step volume selector.
 - **Ships** sail on water tiles to the water in front of a dock.
 - **Aircraft** taxi, take off, cruise, approach and land. They need a free terminal and hold
   above the airport otherwise. Fast jets can crash on a small airport.

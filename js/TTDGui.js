@@ -25,6 +25,7 @@ class Gui {
         this.ng = null;           // new game settings being edited
         this.makeCopies();
         this.bindToolbar();
+        this.bindJukebox();
     }
 
     get world() { return this.game.world; }
@@ -50,6 +51,55 @@ class Gui {
         this.ngs = copy('ng', 14, (t, i) => ({ y: t.y + i * (t.h + 3) }));
         /** Floating income texts (TTD's "+£123" over a vehicle): copies of 'moneyFloat'. */
         this.floats = copy('moneyFloat', 16, () => ({})).map(e => ({ e, age: -1, x: 0, y: 0, h: 0 }));
+    }
+
+    // --- The jukebox widget (TTD's music window): track, previous / play-stop / next, volume ----
+
+    bindJukebox() {
+        const g = this.game;
+        this.jukeboxShown = Store.get(Game.JUKEBOX_KEY) !== '0';
+        this.show('jukebox', this.jukeboxShown);
+        this.on('jbPrev', () => { g.prevTrack(); this.renderJukebox(); });
+        this.on('jbNext', () => { g.nextTrack(); this.renderJukebox(); });
+        this.on('jbPlay', () => { g.setMusicOn(!g.musicOn); this.renderJukebox(); });
+        this.on('jbHide', () => this.showJukebox(false));
+        const vol = UI.get('jbVol');
+        if (vol) vol.onClick((el, e) => {
+            // The level under the pointer: ten steps; the left edge is silence.
+            const c = el.getCanvas();
+            if (!c || !e) return;
+            const r = c.getBoundingClientRect(), f = (e.clientX - r.left) / Math.max(1, r.width);
+            g.setMusicVolume(f < 0.05 ? 0 : Math.min(10, Math.ceil(f * 10)) / 10);
+            this.game.sfx('click');
+            this.renderJukebox();
+        });
+        this.renderJukebox();
+    }
+
+    showJukebox(on) {
+        this.jukeboxShown = !!on;
+        Store.set(Game.JUKEBOX_KEY, on ? '1' : '0');
+        this.show('jukebox', this.jukeboxShown);
+        if (on) this.renderJukebox();
+    }
+
+    /** Track name, the play/stop label and the volume bars (ten steps, lit up to the level). */
+    renderJukebox() {
+        const g = this.game, n = Game.MUSIC.length;
+        const i = g.musicTrack;
+        this.text('jbTitle', '♪ ' + (i >= 0 ? (i + 1) + '/' + n + '  ' + Game.MUSIC[i].name : 'Jukebox') + (g.musicOn ? '' : '  (stopped)'));
+        this.text('jbPlay', g.musicOn ? 'Stop' : 'Play');
+        this.text('jbVolText', Math.round(g.musicVolume * 100) + '%');
+        const e = UI.get('jbVol'), c = e && e.getCanvas();
+        if (!c) return;
+        const x = c.getContext('2d'), W = c.width, H = c.height, level = Math.round(g.musicVolume * 10);
+        x.clearRect(0, 0, W, H);
+        const bw = W / 10;
+        for (let k = 0; k < 10; k++) {
+            const h = 4 + (H - 6) * (k + 1) / 10;
+            x.fillStyle = k < level ? (k < 7 ? '#58c060' : k < 9 ? '#e0c040' : '#e06040') : '#3a3e46';
+            x.fillRect(k * bw + 1.5, H - 2 - h, bw - 3, h);
+        }
     }
 
     /** Float `text` up from world px (x, y, h) — the income a vehicle has just earned. */
@@ -643,8 +693,7 @@ class Gui {
                 [(auto ? '' : '(no autosave) ') + 'Load autosave', () => { if (g.loadGame(Game.AUTOSAVE_KEY)) this.close(); }],
                 ['Currency: ' + Money.CURRENCIES[Money.currency].id, () => { Money.currency = (Money.currency + 1) % Money.CURRENCIES.length; this.world.settings.currency = Money.currency; this.render(); }],
                 ['Game speed: fast forward x' + g.ffMult, () => { g.ffMult = g.ffMult >= 16 ? 2 : g.ffMult * 2; this.render(); }],
-                ['Music: ' + (g.musicOn ? 'on' + (g.musicTrack >= 0 ? ' — ' + Game.MUSIC[g.musicTrack].name : '') : 'off'), () => { g.musicOn = !g.musicOn; this.render(); }],
-                ['Next track', () => { g.musicOn = true; g.nextTrack(); this.render(); }],
+                ['Music player: ' + (this.jukeboxShown ? 'shown' : 'hidden'), () => { this.showJukebox(!this.jukeboxShown); this.render(); }],
                 ['Help and keys', () => this.open('help')],
             ],
         };
@@ -880,6 +929,11 @@ class Gui {
     update(dt) {
         const w = this.world, g = this.game;
         this.updateFloats(dt);
+        this._jbT = (this._jbT || 0) - dt;
+        if (this._jbT <= 0 && this.jukeboxShown) {
+            this._jbT = 0.5;
+            if (this._jbKey !== g.musicTrack + '|' + g.musicOn) { this._jbKey = g.musicTrack + '|' + g.musicOn; this.renderJukebox(); }
+        }
         const mm = UI.get('minimap');
         if (mm && mm.visible && w) {
             this._mapT = (this._mapT || 0) - dt;

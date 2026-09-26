@@ -37,7 +37,11 @@ class Game {
         this._tipT = 0;
         this._frameError = false;
         /** The jukebox (TTD's music player): on/off, the track now playing, its sound handle. */
-        this.musicOn = (typeof TTD_MUSIC !== 'undefined' ? TTD_MUSIC : 1) === 1;
+        // The player's choices are remembered in this browser (Store); TTD_MUSIC is the default.
+        const savedOn = Store.get(Game.MUSIC_ON_KEY), savedVol = Number(Store.get(Game.MUSIC_VOL_KEY));
+        this.musicOn = savedOn != null ? savedOn === '1' : (typeof TTD_MUSIC !== 'undefined' ? TTD_MUSIC : 1) === 1;
+        /** Music level 0..1 (the jukebox's volume selector). */
+        this.musicVolume = Store.get(Game.MUSIC_VOL_KEY) != null && isFinite(savedVol) ? IMath.clamp(savedVol, 0, 1) : 0.7;
         this.musicTrack = -1;
         /** @type {SoundHandle | null} */
         this.musicHandle = null;
@@ -156,10 +160,29 @@ class Game {
         this.nextTrack();
     }
 
-    nextTrack() {
+    /** Play track i of Game.MUSIC from its start (wraps round both ways). */
+    playTrack(i) {
         if (this.musicHandle) this.musicHandle.stop();
-        this.musicTrack = (this.musicTrack + 1) % Game.MUSIC.length;
-        this.musicHandle = Sound3D.music(Game.MUSIC[this.musicTrack].src, { loop: false, volume: 0.7 });
+        const n = Game.MUSIC.length;
+        this.musicTrack = ((i % n) + n) % n;
+        this.musicHandle = Sound3D.music(Game.MUSIC[this.musicTrack].src, { loop: false, volume: this.musicVolume });
+    }
+
+    nextTrack() { this.musicOn = true; this.playTrack(this.musicTrack + 1); }
+    prevTrack() { this.musicOn = true; this.playTrack(this.musicTrack - 1); }
+
+    /** Music on (the current track again from its start) or off; remembered in this browser. */
+    setMusicOn(on) {
+        this.musicOn = !!on;
+        Store.set(Game.MUSIC_ON_KEY, on ? '1' : '0');
+        if (on) this.playTrack(Math.max(0, this.musicTrack));
+    }
+
+    /** Music level 0..1; remembered in this browser. */
+    setMusicVolume(v) {
+        this.musicVolume = IMath.clamp(v, 0, 1);
+        Store.set(Game.MUSIC_VOL_KEY, String(this.musicVolume));
+        if (this.musicHandle) this.musicHandle.setVolume(this.musicVolume);
     }
 
     /**
@@ -434,4 +457,7 @@ Game.MUSIC = [
     { name: 'Jester Theme', src: 'assets/sounds/music/10-jester-theme.mp3' },
 ];
 Game.SAVE_KEY = 'ttd3d.save';
+Game.MUSIC_ON_KEY = 'ttd3d.music.on';
+Game.MUSIC_VOL_KEY = 'ttd3d.music.volume';
+Game.JUKEBOX_KEY = 'ttd3d.music.widget';
 Game.AUTOSAVE_KEY = 'ttd3d.autosave';
