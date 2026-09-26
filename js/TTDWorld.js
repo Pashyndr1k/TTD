@@ -623,7 +623,18 @@ class World {
         w.climate = w.settings.climate;
         Money.currency = w.settings.currency;
         w.acceptanceDirty = true;
-        for (const v of w.vehicles) if (v) v.relink(w);
+        for (const v of w.vehicles) if (v) {
+            // Older saves: "Go to depot" used to insert a stop-at-depot order into the list. The
+            // player's own depot orders are service orders, so those are the button's leftovers:
+            // the current one becomes a one-off trip, and all of them leave the list.
+            const cur = v.orders[v.cur];
+            if (cur && cur.kind === 'depot' && cur.stop && !(v.depotTrip >= 0) && v.state !== 'depot') v.depotTrip = cur.dest;
+            if (v.depotTrip == null) v.depotTrip = -1;
+            const before = v.orders.slice(0, v.cur).filter(q => !(q.kind === 'depot' && q.stop)).length;
+            v.orders = v.orders.filter(q => !(q.kind === 'depot' && q.stop));
+            v.cur = v.orders.length ? before % v.orders.length : 0;
+            v.relink(w);
+        }
         Vehicles.rebuildOccupancy(w);
         return w;
     }

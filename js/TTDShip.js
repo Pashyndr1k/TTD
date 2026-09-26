@@ -60,8 +60,7 @@ class Ship extends Vehicle {
             this.depot = dep;
             this.placeInDepot(world);
             this.serviceAt(world);
-            const o = this.order();
-            if (o && o.kind === 'depot' && o.dest === dep) { if (o.stop) this.stopped = true; this.nextOrder(); }
+            this.arrivedAtDepot(world, dep, world.depots[dep] ? world.depots[dep].t : -1);
             return;
         }
         const st = world.stations[this.destStation()];

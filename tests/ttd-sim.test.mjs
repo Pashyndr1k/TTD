@@ -512,3 +512,37 @@ test('приказ "Full load": поезд ждёт, пока не заполн�
     assert.equal(tr.cur, 1, 'full: off to B');
     assert.ok(tr.cars.every(c => !c.cap || tr.cargoCount(c) === c.cap), 'every wagon full');
 });
+
+test('"Go to depot": поездка в депо не попадает в список приказов; после старта — дальше по своим станциям', () => {
+    const w = flatWorld();
+    must(Commands.run(w, ex => Commands.buildRailStation(w, idx(w, 8, 30), 0, 1, 3, 0, ex), true));
+    for (let x = 11; x <= 30; x++) must(Commands.run(w, ex => Commands.buildRail(w, idx(w, x, 30), Track.X, 0, ex), true));
+    must(Commands.run(w, ex => Commands.buildRailStation(w, idx(w, 31, 30), 0, 1, 3, 0, ex), true));
+    must(Commands.run(w, ex => Commands.buildRail(w, idx(w, 20, 30), Track.LEFT, 0, ex), true));
+    must(Commands.run(w, ex => Commands.buildDepot(w, idx(w, 20, 29), 'rail', 1, 0, ex), true));
+    const tr = Vehicles.build(w, engineByName('Kirby Paul Tank (Steam)').id, 0);
+    tr.orders = [{ kind: 'station', dest: 0 }, { kind: 'station', dest: 1 }];
+    tr.stopped = false;
+    for (let i = 0; i < 74 * 40 && !(tr.state === 'load' && tr.load && tr.load.station === 0); i++) w.tick();
+    for (let i = 0; i < 74 * 20 && tr.state !== 'run'; i++) w.tick();
+    const cur = tr.cur;
+    tr.depotTrip = 0;             // what the window's "To depot" does (Game.sendToDepot)
+    tr.onOrderChanged();
+    for (let i = 0; i < 74 * 60 && tr.state !== 'depot'; i++) w.tick();
+    assert.equal(tr.state, 'depot', 'in the depot');
+    assert.ok(tr.stopped, 'stopped there');
+    assert.equal(tr.depotTrip, -1, 'the trip is over');
+    assert.equal(tr.orders.length, 2, 'no depot stop in the list');
+    assert.ok(tr.orders.every(o => o.kind === 'station'));
+    assert.equal(tr.cur, cur, 'orders carry on where they were');
+    tr.stopped = false;
+    const seen = new Set();
+    for (let i = 0; i < 74 * 80; i++) { w.tick(); if (tr.state === 'load') seen.add(tr.load.station); }
+    assert.ok(seen.has(0) && seen.has(1), 'back on its route');
+    // An older save with the old button's stop-at-depot order: it leaves the list on load.
+    tr.orders.splice(tr.cur, 0, { kind: 'depot', dest: 0, stop: true });
+    const w2 = World.load(w.save());
+    const t2 = w2.vehicles[tr.id];
+    assert.ok(t2.orders.every(o => !(o.kind === 'depot' && o.stop)), 'leftover removed');
+    assert.equal(t2.orders.length, 2);
+});

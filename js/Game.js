@@ -266,21 +266,29 @@ class Game {
         this.camera.follow({ get x() { return v.x * T; }, get y() { return v.y * T; } });
     }
 
+    /**
+     * TTD's "Go to depot": the nearest depot (a hangar for aircraft) as a one-off trip — the vehicle
+     * stops there and its orders stay as they were; pressed again on the way, it is called off.
+     */
     sendToDepot(v) {
         const w = this.world, map = w.map;
+        if (v.state === 'depot') { this.error('Already in a depot'); return; }
+        if (v.depotTrip >= 0) { v.depotTrip = -1; v.onOrderChanged(); this.info('Go to depot cancelled'); return; }
+        let id = -1;
         if (v.type === 'air') {
             const st = w.stations.filter(s => s && s.airport && s.owner === 0)
                 .sort((a, b) => IMath.manhattan(map.tx(a.xy), map.ty(a.xy), v.x, v.y) - IMath.manhattan(map.tx(b.xy), map.ty(b.xy), v.x, v.y))[0];
             if (!st) { this.error('No airport with a hangar'); return; }
-            v.orders.splice(v.cur, 0, { kind: 'depot', dest: st.id, stop: true });
-            v.onOrderChanged();
-            return;
+            id = st.id;
+        } else {
+            const kind = { train: 'rail', road: 'road', ship: 'ship' }[v.type];
+            const d = w.depots.filter(d => d && d.kind === kind && d.owner === v.owner)
+                .sort((a, b) => IMath.manhattan(map.tx(a.t), map.ty(a.t), v.x, v.y) - IMath.manhattan(map.tx(b.t), map.ty(b.t), v.x, v.y))[0];
+            if (!d) { this.error('Unable to find local depot'); return; }
+            id = d.id;
         }
-        const kind = { train: 'rail', road: 'road', ship: 'ship' }[v.type];
-        const d = w.depots.filter(d => d && d.kind === kind && d.owner === v.owner)
-            .sort((a, b) => IMath.manhattan(map.tx(a.t), map.ty(a.t), v.x, v.y) - IMath.manhattan(map.tx(b.t), map.ty(b.t), v.x, v.y))[0];
-        if (!d) { this.error('Unable to find local depot'); return; }
-        v.orders.splice(v.cur, 0, { kind: 'depot', dest: d.id, stop: true });
+        v.serviceDepot = -1;
+        v.depotTrip = id;
         v.onOrderChanged();
     }
 

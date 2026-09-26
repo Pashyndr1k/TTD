@@ -60,11 +60,7 @@ class RoadVehicle extends Vehicle {
         this.depot = id;
         this.placeInDepot(world);
         this.serviceAt(world);
-        const o = this.order();
-        if (o && o.kind === 'depot' && o.dest === id) {
-            if (o.stop) this.stopped = true;
-            this.nextOrder();
-        }
+        this.arrivedAtDepot(world, id, world.depots[id] ? world.depots[id].t : -1);
     }
 
     tick(world) {

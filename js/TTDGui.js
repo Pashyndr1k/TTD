@@ -398,7 +398,7 @@ class Gui {
             [(o && o.unload ? '• ' : '') + 'Unload', () => { if (pick()) { o.unload = !o.unload; if (o.unload) o.full = false; } }],
             [(o && o.transfer ? '• ' : '') + 'Transfer', () => { if (pick()) { o.transfer = !o.transfer; if (o.transfer) o.full = false; } }],
             [(o && o.nonstop ? '• ' : '') + 'Non-stop', () => { if (pick()) o.nonstop = !o.nonstop; }],
-            ['To depot', () => { g.sendToDepot(v); }],
+            [(v.depotTrip >= 0 ? '• ' : '') + 'To depot', () => { g.sendToDepot(v); }],
             ['Center', () => { g.follow(v); }],
         ];
         if (v instanceof Train && v.state !== 'depot') acts.push([v.reversing ? 'Reversing…' : 'Reverse', () => { const err = v.requestReverse(w); if (err) g.error(err); }]);

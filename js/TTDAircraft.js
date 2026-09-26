@@ -129,8 +129,7 @@ class Aircraft extends Vehicle {
                     this.hangar = st.id;
                     this.placeInDepot(world);
                     this.serviceAt(world);
-                    const o = this.order();
-                    if (o && o.kind === 'depot' && o.dest === st.id) { if (o.stop) this.stopped = true; this.nextOrder(); }
+                    this.arrivedAtDepot(world, st.id, st.xy);
                 }
                 break;
             case 'takeoff':

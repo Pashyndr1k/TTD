@@ -35,6 +35,9 @@ class Vehicle {
         this.lastService = 0;
         this.serviceInterval = 150;
         this.serviceDepot = -1;      // a depot the vehicle heads to for servicing
+        /** "Go to depot" (TTD's CMD_SEND_TO_DEPOT): a one-off trip to this depot (a hangar: the
+         *  airport's station id) to stop there, outside the orders — -1 none. */
+        this.depotTrip = -1;
         this.profitThis = 0;
         this.profitLast = 0;
         this.value = 0;
@@ -83,12 +86,13 @@ class Vehicle {
 
     /** The station the vehicle is heading for (-1 — none). */
     destStation() {
-        if (this.serviceDepot >= 0) return -1;
+        if (this.serviceDepot >= 0 || this.depotTrip >= 0) return -1;
         const o = this.order();
         return o && o.kind === 'station' ? o.dest : -1;
     }
 
     destDepot() {
+        if (this.depotTrip >= 0) return this.depotTrip;
         if (this.serviceDepot >= 0) return this.serviceDepot;
         const o = this.order();
         return o && o.kind === 'depot' ? o.dest : -1;
@@ -164,6 +168,26 @@ class Vehicle {
         this.profitThis = 0;
         if (this.owner === 0 && this.profitLast < 0 && this.age > 730 && this.state !== 'depot') {
             world.addNews(this.displayName() + ' made a loss last year: ' + Money.format(this.profitLast) + '.', { kind: 'vehicle' });
+        }
+    }
+
+    /**
+     * Arrived in depot (or hangar) `id`: a "Go to depot" trip ends here with the vehicle stopped —
+     * its orders untouched, it carries on with them when started; a depot order in the list is
+     * done (stopping there if it says so).
+     */
+    arrivedAtDepot(world, id, tile) {
+        if (this.depotTrip === id) {
+            this.depotTrip = -1;
+            this.stopped = true;
+            this.onOrderChanged();
+            if (this.owner === 0) world.addNews(this.displayName() + ' is waiting in depot.', { kind: 'vehicle', tile: tile == null ? -1 : tile });
+            return;
+        }
+        const o = this.order();
+        if (o && o.kind === 'depot' && o.dest === id) {
+            if (o.stop) this.stopped = true;
+            this.nextOrder();
         }
     }
 

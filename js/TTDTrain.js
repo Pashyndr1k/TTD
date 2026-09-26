@@ -110,11 +110,7 @@ class Train extends Vehicle {
         this.depot = depotId;
         this.placeInDepot(world);
         this.serviceAt(world);
-        const o = this.order();
-        if (o && o.kind === 'depot' && o.dest === depotId) {
-            if (o.stop) { this.stopped = true; if (this.owner === 0) world.addNews(this.displayName() + ' is waiting in depot.', { kind: 'vehicle', tile: world.depots[depotId].t }); }
-            this.nextOrder();
-        }
+        this.arrivedAtDepot(world, depotId, world.depots[depotId] ? world.depots[depotId].t : -1);
     }
 
     // --- Occupancy -------------------------------------------------------------------------
