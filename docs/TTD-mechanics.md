@@ -334,6 +334,16 @@ prices, running costs, speeds, power, weight, capacity and lifespans.
   one brakes to a stop first. The wagons keep their places and the engine runs round to the new
   front, so an engine always leads. OpenTTD lets it push from the back instead. Road
   vehicles **turn around** (TTD's `CmdTurnRoadVeh`) with a U-turn on the next tile.
+- **Depot shunting** (TTD's depot window):
+  - sell a whole train, a single engine (with its rear head if it has two) or a single
+    wagon; each car's share of the train's value comes back;
+  - move a car, or a car and everything behind it, to another train in the same depot or
+    into a new row of wagons;
+  - a train that loses its last engine becomes a row of wagons that can't leave; an engine
+    joining one makes it a train again;
+  - buying wagons with no train in the depot starts such a row.
+
+  (`Vehicles.sellCar`, `moveCars`, `carGroup`, `carsValue`.)
 - **Tilt:** every car and road vehicle pitches by the height of the track or road under its front
   and rear axles. It eases onto and off a slope, and a car facing backwards tilts the right way.
 - **Income text:** the payment floats up over the vehicle (TTD's income sign), from the

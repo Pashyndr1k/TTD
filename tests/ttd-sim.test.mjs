@@ -546,3 +546,55 @@ test('"Go to depot": поездка в депо не попадает в спи�
     assert.ok(t2.orders.every(o => !(o.kind === 'depot' && o.stop)), 'leftover removed');
     assert.equal(t2.orders.length, 2);
 });
+
+test('депо: продажа локомотива и вагонов по отдельности, перецепка вагонов, новые ряды вагонов', () => {
+    const w = flatWorld();
+    must(Commands.run(w, ex => Commands.buildRail(w, idx(w, 20, 30), Track.X, 0, ex), true));
+    must(Commands.run(w, ex => Commands.buildDepot(w, idx(w, 19, 30), 'rail', Dir.SW, 0, ex), true));
+    const loco = engineByName('Kirby Paul Tank (Steam)');
+    const coach = w.buyable('rail', 0).find(e => e.wagon && w.cargo(e.cargo).key === 'passengers');
+    const A = Vehicles.build(w, loco.id, 0), B = Vehicles.build(w, loco.id, 0);
+    for (let i = 0; i < 3; i++) Vehicles.addWagon(w, A, coach.id);
+    Vehicles.addWagon(w, B, coach.id);
+    const total = () => w.vehicles.filter(Boolean).reduce((s, v) => s + v.value, 0);
+    const before = total();
+    const isEngine = (c) => !World.ENGINE[c.engine].wagon;
+    // Sell one wagon of A: its share of the value comes back as money.
+    let money = w.player.money;
+    assert.equal(Vehicles.sellCar(w, A, A.cars.length - 1), null);
+    assert.equal(A.cars.filter(c => !isEngine(c)).length, 2);
+    assert.ok(w.player.money > money && Math.abs(total() + (w.player.money - money) - before) < 1e-6, 'value refunded exactly');
+    // Sell A's engine: the wagons stay as a row without an engine, stopped.
+    money = w.player.money;
+    assert.equal(Vehicles.sellCar(w, A, A.cars.findIndex(isEngine)), null);
+    assert.ok(!A.hasEngine() && A.cars.length === 2 && A.stopped, 'a row of wagons');
+    assert.ok(w.player.money > money);
+    // Move B's engine onto A's wagons: A is a train again, B is gone (it was left with... one coach).
+    const v0 = total();
+    let r = Vehicles.moveCars(w, B, B.cars.findIndex(isEngine), A, false);
+    assert.equal(typeof r, 'object');
+    assert.ok(A.hasEngine() && isEngine(A.cars[0]), 'the engine leads its new train');
+    assert.equal(A.cars.length, 3);
+    assert.ok(!B.hasEngine() && B.cars.length === 1, 'B keeps its coach as a row');
+    // Move B's coach onto A: B is empty and disappears.
+    r = Vehicles.moveCars(w, B, 0, A, false);
+    assert.equal(w.vehicles[B.id], null, 'an empty row is gone');
+    assert.equal(A.cars.length, 4);
+    // Move the second coach and the rest into a new row.
+    r = Vehicles.moveCars(w, A, 2, null, true);
+    assert.equal(typeof r, 'object');
+    assert.equal(r.to.cars.length, 2);
+    assert.equal(A.cars.length, 2);
+    assert.ok(Math.abs(total() - v0) < 1e-6, 'moving keeps the value');
+    // A dual-headed engine sells with its rear head.
+    const dmu = TTDData_find('multihead');
+    if (dmu) {
+        const st = w.engines[dmu.id]; if (st) st.available = true;
+        const D = Vehicles.build(w, dmu.id, 0);
+        assert.equal(typeof D, 'object');
+        assert.equal(D.cars.length, 2);
+        assert.equal(Vehicles.sellCar(w, D, 1), null);
+        assert.equal(w.vehicles[D.id], null, 'both heads sold');
+    }
+});
+function TTDData_find(what) { return page.get('TTDData').ENGINES.find(e => e.type === 'rail' && e.multihead && e.climates & 1); }

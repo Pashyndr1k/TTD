@@ -497,6 +497,100 @@ const Vehicles = {
         return null;
     },
 
+    // --- Depot shunting (TTD's depot window: sell or move single engines and wagons) ---------
+
+    /** The cars that go with car i: a multi-headed engine and its rear head are one unit. */
+    carGroup(train, i) {
+        const car = train.cars[i], out = [i];
+        if (!car || car.wagon) return car ? out : [];
+        const partner = train.cars.findIndex((c, k) => k !== i && c.engine === car.engine && !c.wagon && c.rearHead !== car.rearHead);
+        if (World.ENGINE[car.engine].multihead && partner >= 0) out.push(partner);
+        return out;
+    },
+
+    /** The part of a train's value the cars `idxs` carry: the value shared out by new price. */
+    carsValue(world, train, idxs) {
+        const price = (c) => (c.rearHead ? 0 : Vehicles.price(world, World.ENGINE[c.engine]));
+        let total = 0, part = 0;
+        train.cars.forEach((c, k) => { const p = price(c); total += p; if (idxs.includes(k)) part += p; });
+        return total > 0 ? train.value * part / total : 0;
+    },
+
+    /** After cars left a train: gone when empty; a row of wagons without an engine stays stopped. */
+    afterShunt(world, train) {
+        if (!train.cars.length) { Vehicles.remove(world, train); return; }
+        Trains.arrange(train);
+        const lead = train.cars.find(c => !c.wagon && !c.rearHead) || train.cars[0];
+        train.engine = lead.engine;
+        if (!train.hasEngine()) train.stopped = true;
+        train.placeInDepot(world);
+    },
+
+    /** Sell car i of a train in its depot (an engine with its rear head). Returns an error or null. */
+    sellCar(world, train, i) {
+        if (train.type !== 'train' || train.state !== 'depot') return 'Train must be stopped inside a depot';
+        const idxs = Vehicles.carGroup(train, i);
+        if (!idxs.length) return 'No such vehicle';
+        const val = Vehicles.carsValue(world, train, idxs);
+        const c = world.companies[train.owner];
+        if (c) c.earn(val, Company.C_NEW_VEHICLES);
+        train.value -= val;
+        for (const k of idxs.sort((a, b) => b - a)) train.cars.splice(k, 1);
+        Vehicles.afterShunt(world, train);
+        return null;
+    },
+
+    /** A new, empty row in the depot of train `from` (TTD's free wagon row). */
+    newRow(world, from) {
+        const v = new Train(world.vehicles.length, from.owner, from.engine);
+        v.cars = [];
+        const c = world.companies[from.owner];
+        v.unit = c ? c.nextUnit(world, 'train') : 0;
+        v.maxAge = from.maxAge;
+        v.reliability = from.reliability;
+        v.relDec = from.relDec;
+        v.lastService = from.lastService;
+        v.built = world.date;
+        v.value = 0;
+        v.serviceInterval = from.serviceInterval;
+        v.depot = from.depot;
+        v.state = 'depot';
+        v.stopped = true;
+        world.vehicles.push(v);
+        return v;
+    },
+
+    /**
+     * Move car i of train `from` (with `rest` — it and every car behind it) to train `to` in the
+     * same depot, or into a new row (`to` null). An engine joining a row without one makes it a
+     * train, with the engine's age and reliability. Returns { to } or an error text.
+     */
+    moveCars(world, from, i, to, rest) {
+        if (from.type !== 'train' || from.state !== 'depot') return 'Train must be stopped inside a depot';
+        if (to && (to === from || to.type !== 'train' || to.state !== 'depot' || to.depot !== from.depot)) return 'Both must stand in the same depot';
+        if (!from.cars[i]) return 'No such vehicle';
+        const set = new Set(rest ? from.cars.map((c, k) => k).filter(k => k >= i) : [i]);
+        for (const k of [...set]) for (const g of Vehicles.carGroup(from, k)) set.add(g);
+        const idxs = [...set].sort((a, b) => a - b);
+        if (to && to.cars.length + idxs.length > 30) return 'Train too long';
+        const val = Vehicles.carsValue(world, from, idxs);
+        const cars = idxs.map(k => from.cars[k]);
+        for (const k of idxs.slice().reverse()) from.cars.splice(k, 1);
+        if (!to) to = Vehicles.newRow(world, from);
+        const hadEngine = to.hasEngine();
+        to.cars.push(...cars);
+        to.value += val;
+        from.value -= val;
+        if (!hadEngine && cars.some(c => !c.wagon)) {
+            // The engine brings its own age and state with it.
+            to.age = from.age; to.maxAge = from.maxAge; to.reliability = from.reliability;
+            to.relDec = from.relDec; to.lastService = from.lastService; to.breakdowns = from.breakdowns;
+        }
+        Vehicles.afterShunt(world, to);
+        Vehicles.afterShunt(world, from);
+        return { to };
+    },
+
     sell(world, v) {
         if (v.state !== 'depot' && v.state !== 'crashed') return 'Vehicle must be stopped in a depot';
         const c = world.companies[v.owner];

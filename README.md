@@ -55,7 +55,14 @@ build.bat          # or: node tools/build.mjs          -> dist/*.zip
   2. Track: drag to lay it. Diagonal drags lay diagonal track; a click near a tile corner lays
      a corner piece, drawn as a curve. Track follows TTD's slope rules and ramps up hills.
   3. Depot next to the track.
-  4. Click the depot → New vehicles → buy a locomotive, then add wagons. Rows say which is which:
+  4. Click the depot → New vehicles → buy a locomotive, then add wagons. The depot's Vehicles
+     tab lists every train car by car. Click a train or a car, then:
+     - sell the train, a single engine or a single wagon (an engine's wagons stay behind as a
+       row of wagons);
+     - **Move** a car, or **Move + rest** (it and everything behind it), then click another
+       train's row to attach it there, or **New row** to set it apart.
+
+     An engine moved onto a row of wagons makes it a train again. Rows say which is which:
      TTD's wagon names ("Wood Truck", "Oil Tanker") are rail wagons, not road vehicles.
      The first locomotive of each climate (sub-tropical: the Wills 2-8-0, temperate: the
      Kirby Paul Tank) and the rail wagons can be bought from 1900 (`TTD_FIRST_TRAIN_YEAR`;

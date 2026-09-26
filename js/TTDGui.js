@@ -411,6 +411,85 @@ class Gui {
             infoLines: 0 };
     }
 
+    /**
+     * The depot's vehicles (tab 0) — TTD's depot window: every train with its engines and wagons
+     * row by row. Click a train or a car to select it; then sell it, or move a car (or a car and
+     * everything behind it) to another train in the depot — click that train's rows — or into a
+     * new row of wagons of its own.
+     */
+    depotVehicles(title, inside, acts) {
+        const w = this.world, g = this.game, win = this.win;
+        const pick = win.pick && w.vehicles[win.pick.v] && inside.includes(w.vehicles[win.pick.v]) ? win.pick : null;
+        const mv = win.moving && w.vehicles[win.moving.v] && inside.includes(w.vehicles[win.moving.v]) ? win.moving : null;
+        if (!pick) win.pick = null;
+        if (!mv) win.moving = null;
+        const select = (v, i) => { win.pick = { v: v.id, i }; if (v.type === 'train') win.train = v.id; this.render(); };
+        const moveTo = (to) => {
+            const from = w.vehicles[mv.v];
+            const r = Vehicles.moveCars(w, from, mv.i, to, mv.rest);
+            if (typeof r === 'string') { g.error(r); return; }
+            win.moving = null;
+            win.pick = { v: r.to.id, i: -1 };
+            win.train = r.to.id;
+            this.render();
+        };
+        const rows = [];
+        for (const v of inside) {
+            const isTrain = v.type === 'train';
+            const kind = !isTrain ? v.spec.name : v.hasEngine() ? v.cars.length + ' car(s)' : 'wagons, no engine';
+            const mark = pick && pick.v === v.id && pick.i < 0 ? '▶ ■ ' : '■ ';
+            rows.push([mark + v.displayName() + ' — ' + kind + (v.stopped ? '' : '  (starting)'),
+                () => (mv && isTrain && mv.v !== v.id ? moveTo(v) : select(v, -1))]);
+            if (!isTrain) continue;
+            v.cars.forEach((c, k) => {
+                const e = World.ENGINE[c.engine];
+                const load = c.cap ? '  ' + v.cargoCount(c) + '/' + c.cap + ' ' + (w.cargo(c.slot) ? w.cargo(c.slot).name.toLowerCase() : '') : '';
+                const sel = pick && pick.v === v.id && pick.i === k ? '▶ · ' : '· ';
+                const moving = mv && mv.v === v.id && (mv.rest ? k >= mv.i : k === mv.i) ? '  [moving]' : '';
+                rows.push([sel + (k + 1) + '. ' + (c.wagon ? '' : c.rearHead ? '(rear) ' : '[engine] ') + e.name + load + moving,
+                    () => (mv && mv.v !== v.id ? moveTo(v) : select(v, k))]);
+            });
+        }
+        acts.push(['Start all', () => { for (const v of inside) if (v.orders.length && (v.type !== 'train' || v.hasEngine())) v.stopped = false; }]);
+        let info;
+        const pv = pick ? w.vehicles[pick.v] : null;
+        if (mv) {
+            const from = w.vehicles[mv.v], c = from.cars[mv.i];
+            info = 'Moving ' + World.ENGINE[c.engine].name + (mv.rest ? ' and the cars behind it' : '') + ' from ' + from.displayName() + '.\n' +
+                'Click a row of another train to attach it there, or "New row" to leave it on its own.';
+            acts.push(['New row', () => moveTo(null)]);
+            acts.push(['Cancel', () => { win.moving = null; }]);
+        } else if (pv && pick.i < 0) {
+            info = pv.displayName() + ': ' + (pv.type === 'train' ? pv.cars.length + ' car(s), value ' + Money.format(pv.value) : pv.spec.name) +
+                (pv instanceof Train && !pv.hasEngine() ? '\nNo engine: move one here from another train, or buy one.' : '');
+            acts.push(['Open', () => this.open('vehicle', pv.id)]);
+            acts.push([pv.stopped ? 'Start' : 'Stop', () => {
+                if (pv instanceof Train && !pv.hasEngine()) { g.error('A train needs an engine'); return; }
+                if (!pv.orders.length) { g.error('This vehicle has no orders'); return; }
+                pv.stopped = !pv.stopped;
+            }]);
+            acts.push(['Sell ' + (pv.type === 'train' ? 'train' : 'vehicle'), () => {
+                const val = pv.value, err = Vehicles.sell(w, pv);
+                if (err) g.error(err); else { g.money('+' + Money.format(val)); win.pick = null; }
+            }]);
+            if (pv.type === 'train') acts.push(['Add wagons', () => { win.tab = 1; win.sel = -1; win.page = 0; win.train = pv.id; }]);
+        } else if (pv && pv.cars[pick.i]) {
+            const c = pv.cars[pick.i], e = World.ENGINE[c.engine];
+            const val = Vehicles.carsValue(w, pv, Vehicles.carGroup(pv, pick.i));
+            info = e.name + (c.wagon ? ' (wagon)' : ' (engine)') + ' in ' + pv.displayName() + '\nSells for ' + Money.format(val) +
+                (World.ENGINE[c.engine].multihead ? ' with its other head' : '') + (c.cap && pv.cargoCount(c) ? '; its cargo is lost' : '') + '.';
+            acts.push(['Sell ' + (c.wagon ? 'wagon' : 'engine'), () => {
+                const err = Vehicles.sellCar(w, pv, pick.i);
+                if (err) g.error(err); else { g.money('+' + Money.format(val)); win.pick = w.vehicles[pv.id] ? { v: pv.id, i: -1 } : null; }
+            }]);
+            acts.push(['Move', () => { win.moving = { v: pv.id, i: pick.i, rest: false }; }]);
+            if (pick.i < pv.cars.length - 1) acts.push(['Move + rest', () => { win.moving = { v: pv.id, i: pick.i, rest: true }; }]);
+        } else {
+            info = inside.length ? 'Click a train or one of its cars to sell it or move it.' : 'No vehicles in this depot. Use "New vehicles" to buy one.';
+        }
+        return { title, text: '', rows, info, acts };
+    }
+
     /** Depot / hangar window: vehicles inside (tab 0) and the vehicles to buy (tab 1). */
     vDepot(id) {
         const w = this.world, g = this.game;
@@ -427,19 +506,16 @@ class Gui {
             ['Vehicles (' + inside.length + ')', () => { this.win.tab = 0; this.win.sel = -1; this.win.page = 0; }],
             ['New vehicles', () => { this.win.tab = 1; this.win.sel = -1; this.win.page = 0; }],
         ];
-        if (tab === 0) {
-            const rows = inside.map(v => [v.displayName() + ' — ' + v.spec.name + (v.type === 'train' ? ' (' + v.cars.length + ' cars)' : '') + (v.stopped ? '' : ' ▶'), () => this.open('vehicle', v.id)]);
-            acts.push(['Start all', () => { for (const v of inside) if (v.orders.length) v.stopped = false; }]);
-            return { title, text: inside.length ? '' : 'No vehicles in this depot. Use "New vehicles" to buy one.', rows, acts };
-        }
+        if (tab === 0) return this.depotVehicles(title, inside, acts);
         const railType = depot && depot.kind === 'rail' ? w.map.railType[depot.t] : null;
         let list = w.buyable(type, railType);
         if (type === 'air' && hangar && hangar.airport && hangar.airport.type === 2) list = list.filter(e => e.heli);
         // Trains: locomotives first, then wagons (TTD's wagon names — "Wood Truck", "Oil Tanker" —
         // are rail wagons, so each row says which it is).
         if (type === 'rail') list = list.filter(e => !e.wagon).concat(list.filter(e => e.wagon));
-        const trains = /** @type {Train[]} */ (inside.filter(v => v instanceof Train && v.hasEngine()));
-        const target = trains.find(v => v.id === this.win.train) || trains[trains.length - 1];
+        // New wagons join the train (or wagon row) selected on the Vehicles tab, else the last train.
+        const rowsIn = /** @type {Train[]} */ (inside.filter(v => v instanceof Train));
+        const target = rowsIn.find(v => v.id === this.win.train) || rowsIn.filter(v => v.hasEngine()).pop() || rowsIn[rowsIn.length - 1];
         const rows = list.map((e, i) => [(type === 'rail' ? (e.wagon ? 'Wagon: ' : 'Locomotive: ') : '') + e.name + ' — ' + Money.format(Vehicles.price(w, e)), () => { this.win.sel = i; this.render(); }]);
         let text = '';
         if (type === 'rail' && !list.some(e => !e.wagon)) {
@@ -471,12 +547,19 @@ class Gui {
                 'Capacity: ' + cap,
                 'Designed: ' + Calendar.toYMD(w.engines[e.id].intro).y + '   Life: ' + e.life + ' years',
                 'Reliability: ' + Math.round(w.engines[e.id].reliability / 655.35) + '%',
-                e.wagon ? (target ? 'Will be attached to ' + target.displayName() : 'Buy an engine first, then add wagons to it') : ''].join('\n');
+                e.wagon ? (target ? 'Will be attached to ' + target.displayName() : 'Starts a row of wagons in the depot') : ''].join('\n');
         }
         acts.push([e && e.wagon ? 'Add wagon' : 'Buy', () => {
             if (!e) return;
+            if (e.wagon && !target) {
+                // No train to attach it to: TTD starts a row of wagons in the depot.
+                const v = Vehicles.build(w, e.id, id);
+                if (typeof v === 'string') { g.error(v); return; }
+                g.money('-' + Money.format(v.value));
+                this.win.train = v.id;
+                return;
+            }
             if (e.wagon) {
-                if (!target) { g.error('No train in this depot to attach the wagon to'); return; }
                 const err = Vehicles.addWagon(w, target, e.id);
                 if (err) g.error(err); else g.money('-' + Money.format(Vehicles.price(w, e)));
                 return;
